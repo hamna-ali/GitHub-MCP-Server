@@ -172,8 +172,14 @@ Add the server to your MCP client configuration file (e.g., `mcp_config.json` or
 
 ### Testing with Official MCP Inspector
 
-You can run and test all tools interactively in your browser using the official MCP Inspector:
+You can run and test all tools interactively in your browser using the official MCP Inspector.
+The server automatically resolves `.env` from the project root regardless of the directory where the command is executed:
 
+```powershell
+npx @modelcontextprotocol/inspector "D:\ML Projects\GitHub-MCP-Server\.venv\Scripts\python.exe" -m github_mcp
+```
+
+Or from the repository root:
 ```powershell
 npx @modelcontextprotocol/inspector .\.venv\Scripts\python.exe -m github_mcp
 ```
@@ -182,16 +188,16 @@ npx @modelcontextprotocol/inspector .\.venv\Scripts\python.exe -m github_mcp
 
 ## 7. Running Tests and Verification
 
-### Run the Automated Test Suite (30 unit & integration tests)
+### Run the Automated Test Suite (37 unit & integration tests)
 ```powershell
 .\.venv\Scripts\pytest.exe -v
 ```
-*Expected result*: `30 passed` in ~2.5 seconds.
+*Expected result*: `37 passed` in ~3 seconds.
 
 ### Run Code Formatting and Lint Checks
 ```powershell
-.\.venv\Scripts\ruff.exe check src tests
-.\.venv\Scripts\ruff.exe format --check src tests
+.\.venv\Scripts\ruff.exe check src tests scripts
+.\.venv\Scripts\ruff.exe format --check src tests scripts
 ```
 
 ### Launch the Server Manually
@@ -200,36 +206,42 @@ npx @modelcontextprotocol/inspector .\.venv\Scripts\python.exe -m github_mcp
 ```
 *(Server listens on stdio for JSON-RPC messages from the MCP client)*
 
+### Run Automated Live GitHub API Verification
+```powershell
+.\.venv\Scripts\python.exe scripts\verify_live.py
+```
+*(Executes all 5 tools against real GitHub API endpoints for `hamna-ali/Customer-Churn-Prediction`)*
+
 ---
 
 ## 8. Live-Demo Script (5 Natural-Language Prompts)
 
-During your screen-sharing presentation, demonstrate the end-to-end integration by asking the AI assistant these 5 progressive prompts:
+During your screen-sharing presentation, demonstrate the end-to-end integration using your real GitHub account (`hamna-ali`) and ML repository (`Customer-Churn-Prediction`):
 
 ### Prompt 1: Portfolio Discovery
-> *"Can you use our GitHub MCP server to list all repositories in my account, and filter specifically for projects written in Python?"*
-- **Tool invoked**: `list_repositories(language_filter="Python")`
+> *"Can you use our GitHub MCP server to list all repositories in my account (hamna-ali), and filter specifically for projects written in Python?"*
+- **Tool invoked**: `list_repositories(username="hamna-ali", language_filter="Python")`
 - **What to highlight**: The assistant dynamically retrieves accessible repositories, star counts, descriptions, and update timestamps.
 
 ### Prompt 2: Metadata and Architecture Inspection
-> *"Retrieve the details for the repository '<owner>/<repo>', and check its primary language, topics, license, and default branch."*
-- **Tool invoked**: `get_repository_details(owner="...", repo="...")`
-- **What to highlight**: Demonstrates structured extraction of tags, license compliance (e.g. MIT/Apache-2.0), and git URLs.
+> *"Retrieve the details for 'hamna-ali/Customer-Churn-Prediction', and check its primary language, topics, license, and default branch."*
+- **Tool invoked**: `get_repository_details(owner="hamna-ali", repo="Customer-Churn-Prediction")`
+- **What to highlight**: Demonstrates structured extraction of tags, license compliance, clone URLs, and default branch.
 
 ### Prompt 3: Directory and File Structure Exploration
-> *"Show me the directory tree of this repository. Does it follow a standard ML project structure with separate data, models, and training directories?"*
-- **Tool invoked**: `get_repository_tree(owner="...", repo="...", recursive=True)`
-- **What to highlight**: Recursive tree inspection identifies key directories (`src/`, `models/`, `data/`) and detects weights files or notebooks.
+> *"Show me the directory tree of Customer-Churn-Prediction. Does it follow a standard ML project structure with separate data, models, and training directories?"*
+- **Tool invoked**: `get_repository_tree(owner="hamna-ali", repo="Customer-Churn-Prediction", recursive=True)`
+- **What to highlight**: Recursive tree inspection identifies key directories (`app/`, `src/churn/models/`, `data/`) and detects weights files (`artifacts/best_model.joblib`) and notebooks (`notebooks/01_eda.ipynb`).
 
 ### Prompt 4: Inspecting Model Training and Config Files
-> *"Read the requirements.txt and README.md files for this repository to see the exact library versions and training setup."*
-- **Tool invoked**: `get_file_contents(owner="...", repo="...", path="requirements.txt")` and `get_file_contents(owner="...", repo="...", path="README.md")`
+> *"Read the requirements.txt and README.md files for Customer-Churn-Prediction to see the exact library versions and training setup."*
+- **Tool invoked**: `get_file_contents(owner="hamna-ali", repo="Customer-Churn-Prediction", path="requirements.txt")` and `get_file_contents(owner="hamna-ali", repo="Customer-Churn-Prediction", path="README.md")`
 - **What to highlight**: Safe decoding of file contents, handling of size limits, and absence of raw token leakage.
 
 ### Prompt 5: Automated Deep ML Portfolio Analysis
-> *"Perform a full ML portfolio analysis on '<owner>/<repo>'. Summarize its problem statement, ML frameworks, model backbone, datasets, evaluation metrics, and deployment approach. Make sure to distinguish what is verified in the code from what is unverified."*
-- **Tool invoked**: `analyze_ml_repository(owner="...", repo="...")`
-- **What to highlight**: The tool returns a structured breakdown marking fields as `[DOCUMENTED]` (with exact citations to lines/files) vs `[UNVERIFIED]`, providing an instant assessment of code quality and engineering maturity.
+> *"Perform a full ML portfolio analysis on 'hamna-ali/Customer-Churn-Prediction'. Summarize its problem statement, ML frameworks, model backbone, datasets, evaluation metrics, and deployment approach. Make sure to distinguish what is verified in the code from what is unverified."*
+- **Tool invoked**: `analyze_ml_repository(owner="hamna-ali", repo="Customer-Churn-Prediction")`
+- **What to highlight**: The tool returns a structured breakdown marking fields as `[DOCUMENTED]` (with exact citations to lines/files) vs `[UNVERIFIED]`. Reuses in-memory cached responses to conserve GitHub API quota. Demonstrates verified detection of **Scikit-Learn**, **XGBoost**, **MLflow**, **FastAPI**, and **Streamlit** with a 1.0 confidence score!
 
 ---
 

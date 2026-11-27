@@ -1,16 +1,26 @@
 """Configuration and credential management for GitHub MCP Server.
 
-Ensures tokens are read from environment variables and never leaked in representations or logs.
+Ensures tokens are reliably loaded from project root .env and environment variables,
+and guarantees secrets are never leaked in representations, logs, or error responses.
 """
 
 import os
+from pathlib import Path
 from typing import Optional
 
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, SecretStr
 
-# Load variables from .env file if present
-load_dotenv()
+# Determine canonical project root (directory containing pyproject.toml and .env)
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
+# Load from canonical project root .env first, then fallback to current working directory
+_project_env = PROJECT_ROOT / ".env"
+if _project_env.exists():
+    load_dotenv(dotenv_path=_project_env, override=False)
+else:
+    # Also check current working directory
+    load_dotenv(override=False)
 
 
 class ServerConfig(BaseModel):
@@ -35,8 +45,14 @@ class ServerConfig(BaseModel):
 
     @classmethod
     def from_env(cls) -> "ServerConfig":
-        """Load configuration from environment variables."""
-        token_val = os.getenv("GITHUB_PERSONAL_ACCESS_TOKEN") or os.getenv("GITHUB_TOKEN")
+        """Load configuration from environment variables, reloading project .env if needed."""
+        # Ensure latest environment variables from project root .env are loaded
+        if _project_env.exists():
+            load_dotenv(dotenv_path=_project_env, override=False)
+
+        raw_token = os.getenv("GITHUB_PERSONAL_ACCESS_TOKEN") or os.getenv("GITHUB_TOKEN")
+        clean_token = raw_token.strip().strip("'\"") if raw_token else None
+
         api_url = os.getenv("GITHUB_API_URL", "https://api.github.com").rstrip("/")
         timeout_str = os.getenv("GITHUB_REQUEST_TIMEOUT", "20.0")
 
@@ -46,7 +62,7 @@ class ServerConfig(BaseModel):
             timeout = 20.0
 
         return cls(
-            github_token=SecretStr(token_val) if token_val else None,
+            github_token=SecretStr(clean_token) if clean_token else None,
             github_api_url=api_url,
             request_timeout=timeout,
         )
@@ -54,14 +70,16 @@ class ServerConfig(BaseModel):
     @property
     def has_token(self) -> bool:
         """Return True if a GitHub token is configured."""
-        return (
-            self.github_token is not None and len(self.github_token.get_secret_value().strip()) > 0
-        )
+        if not self.github_token:
+            return False
+        val = self.github_token.get_secret_value().strip()
+        return len(val) > 0
 
     def get_token_value(self) -> Optional[str]:
         """Safely retrieve raw token string for internal API authorization header only."""
         if self.github_token:
-            return self.github_token.get_secret_value()
+            val = self.github_token.get_secret_value().strip().strip("'\"")
+            return val if len(val) > 0 else None
         return None
 
     def get_headers(self) -> dict[str, str]:

@@ -1,7 +1,8 @@
-"""Reusable asynchronous GitHub REST API client with robust error handling and pagination."""
+"""Reusable asynchronous GitHub REST API client with robust error handling, caching, and rate limit tracking."""
 
 import base64
 import logging
+import time
 from typing import Any, Optional
 
 import httpx
@@ -27,11 +28,14 @@ logger = logging.getLogger(__name__)
 
 
 class GitHubClient:
-    """Asynchronous client for GitHub REST API."""
+    """Asynchronous client for GitHub REST API with in-memory caching and resilient rate limit parsing."""
 
     def __init__(self, config: Optional[ServerConfig] = None):
         self.config = config or ServerConfig.from_env()
         self._client: Optional[httpx.AsyncClient] = None
+        # Short-lived in-memory cache for GET responses to avoid duplicate calls during a demo session
+        self._cache: dict[tuple[str, tuple], tuple[float, httpx.Response]] = {}
+        self._cache_ttl: float = 300.0  # 5 minutes
 
     async def __aenter__(self) -> "GitHubClient":
         headers = self.config.get_headers()
@@ -71,8 +75,20 @@ class GitHubClient:
         endpoint: str,
         params: Optional[dict[str, Any]] = None,
         headers: Optional[dict[str, str]] = None,
+        use_cache: bool = True,
     ) -> httpx.Response:
-        """Execute HTTP request with unified error translation without leaking secrets."""
+        """Execute HTTP request with caching, unified error translation, and rate limit defense."""
+        # Check in-memory cache for GET requests
+        cache_key = (
+            endpoint,
+            tuple(sorted((k, str(v)) for k, v in params.items())) if params else (),
+        )
+        if method.upper() == "GET" and use_cache and cache_key in self._cache:
+            ts, cached_resp = self._cache[cache_key]
+            if time.time() - ts < self._cache_ttl:
+                logger.debug("Serving cached response for %s", endpoint)
+                return cached_resp
+
         client = self._get_client()
         try:
             response = await client.request(
@@ -97,6 +113,19 @@ class GitHubClient:
                 f"Network request to GitHub failed: {type(e).__name__}"
             ) from None
 
+        # Inspect rate limit headers on successful response
+        if response.status_code == 200:
+            remaining = response.headers.get("x-ratelimit-remaining")
+            if remaining and remaining.isdigit() and int(remaining) <= 5:
+                logger.warning(
+                    "GitHub API quota running low: %s remaining (limit %s)",
+                    remaining,
+                    response.headers.get("x-ratelimit-limit"),
+                )
+            if method.upper() == "GET" and use_cache:
+                self._cache[cache_key] = (time.time(), response)
+            return response
+
         # Handle specific GitHub API HTTP status codes
         if response.status_code == 401:
             raise GitHubAuthError(
@@ -104,19 +133,43 @@ class GitHubClient:
                 "Ensure GITHUB_PERSONAL_ACCESS_TOKEN is valid and has read permissions."
             )
 
-        if response.status_code == 403:
-            # Check for rate limit
+        if response.status_code in (403, 429):
             rate_remaining = response.headers.get("x-ratelimit-remaining")
+            rate_limit_hdr = response.headers.get("x-ratelimit-limit")
             reset_ts = response.headers.get("x-ratelimit-reset")
-            reset_time = int(reset_ts) if reset_ts and reset_ts.isdigit() else None
+            retry_after_hdr = response.headers.get("retry-after")
 
-            if rate_remaining == "0" or "rate limit" in response.text.lower():
+            remaining = int(rate_remaining) if rate_remaining and rate_remaining.isdigit() else None
+            limit = int(rate_limit_hdr) if rate_limit_hdr and rate_limit_hdr.isdigit() else None
+            reset_time = int(reset_ts) if reset_ts and reset_ts.isdigit() else None
+            retry_after = (
+                int(retry_after_hdr) if retry_after_hdr and retry_after_hdr.isdigit() else None
+            )
+
+            resp_text_lower = response.text.lower()
+            is_secondary = (
+                retry_after is not None
+                or "secondary rate limit" in resp_text_lower
+                or "please wait a few minutes" in resp_text_lower
+            )
+            is_rate_limit = (
+                is_secondary
+                or remaining == 0
+                or "rate limit" in resp_text_lower
+                or response.status_code == 429
+            )
+
+            if is_rate_limit:
                 raise GitHubRateLimitError(
-                    "GitHub API rate limit exceeded.",
                     reset_time=reset_time,
+                    retry_after=retry_after,
+                    limit=limit,
+                    remaining=remaining,
+                    is_secondary=is_secondary,
+                    status_code=response.status_code,
                 )
 
-            # Other 403 forbidden error
+            # Other 403 forbidden error (permissions)
             err_msg = "Forbidden (403). Your token may lack permissions for this resource."
             try:
                 data = response.json()
@@ -264,16 +317,23 @@ class GitHubClient:
         recursive: bool = True,
     ) -> RepositoryTree:
         """Retrieve directory structure of a repository using the Git Trees API."""
-        target_branch = branch
-        if not target_branch:
-            # Look up default branch
-            repo_meta = await self.get_repository_details(owner, repo)
-            target_branch = repo_meta.default_branch
-
+        # Use HEAD directly to avoid redundant get_repository_details calls
+        target_branch = branch or "HEAD"
         endpoint = f"/repos/{owner}/{repo}/git/trees/{target_branch}"
         params = {"recursive": "1"} if recursive else {}
 
-        response = await self._request("GET", endpoint, params=params)
+        try:
+            response = await self._request("GET", endpoint, params=params)
+        except GitHubNotFoundError:
+            if not branch:
+                # Fallback to querying default_branch explicitly if HEAD fails
+                repo_meta = await self.get_repository_details(owner, repo)
+                target_branch = repo_meta.default_branch
+                endpoint = f"/repos/{owner}/{repo}/git/trees/{target_branch}"
+                response = await self._request("GET", endpoint, params=params)
+            else:
+                raise
+
         data = response.json()
 
         tree_items: list[TreeItem] = []

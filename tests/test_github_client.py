@@ -304,3 +304,53 @@ async def test_network_error_translation(test_config):
     with pytest.raises(GitHubNetworkError):
         await client.get_repository_details("owner", "repo")
     await client.close()
+
+
+@pytest.mark.asyncio
+async def test_secondary_rate_limit_handling(test_config):
+    def handler(request: httpx.Request) -> httpx.Response:
+        headers = {"retry-after": "60"}
+        return httpx.Response(
+            403,
+            headers=headers,
+            json={"message": "You have exceeded a secondary rate limit. Please wait 60 seconds."},
+        )
+
+    client = GitHubClient(config=test_config)
+    client._client = httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="https://api.github.com"
+    )
+
+    with pytest.raises(GitHubRateLimitError) as exc_info:
+        await client.get_repository_details("owner", "repo")
+    assert exc_info.value.is_secondary is True
+    assert exc_info.value.retry_after == 60
+    assert "secondary rate limit" in str(exc_info.value).lower()
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_client_in_memory_caching(test_config):
+    call_count = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal call_count
+        call_count += 1
+        return httpx.Response(200, json=SAMPLE_REPO_DETAILS)
+
+    client = GitHubClient(config=test_config)
+    client._client = httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="https://api.github.com"
+    )
+
+    # First call triggers handler
+    res1 = await client.get_repository_details("ml-engineer", "vision-transformer-classifier")
+    assert call_count == 1
+    assert res1.name == "vision-transformer-classifier"
+
+    # Second call uses in-memory cache and does not call handler again
+    res2 = await client.get_repository_details("ml-engineer", "vision-transformer-classifier")
+    assert call_count == 1
+    assert res2.name == "vision-transformer-classifier"
+
+    await client.close()

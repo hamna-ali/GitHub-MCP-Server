@@ -162,14 +162,29 @@ class MLRepositoryAnalyzer:
             except Exception:
                 readme_text = ""
 
-        # 4. Read primary dependency file
+        # 4. Read primary dependency files prudently (prioritize requirements.txt/environment.yml)
+        def _dep_sort_key(p: str) -> int:
+            low = p.lower()
+            if "requirements" in low:
+                return 0
+            if "environment" in low:
+                return 1
+            if "pyproject" in low:
+                return 2
+            return 3
+
+        sorted_dep_files = sorted(dep_files, key=_dep_sort_key)
         dep_texts: dict[str, str] = {}
-        for dep_file in dep_files[:3]:  # Read top 3 dependency files
+        for dep_file in sorted_dep_files[:2]:
             try:
                 dep_obj = await self.client.get_file_contents(
                     owner=owner, repo=repo, path=dep_file, branch=analyzed_branch
                 )
                 dep_texts[dep_file] = dep_obj.content
+                # If ML frameworks are already verified in the primary file, avoid extra API calls
+                test_fws = self._detect_frameworks(dep_texts, readme_text)
+                if any(f.verified_in_dependencies for f in test_fws):
+                    break
             except Exception:
                 pass
 

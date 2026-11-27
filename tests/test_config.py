@@ -1,11 +1,11 @@
-"""Tests for server configuration and token security."""
+"""Tests for server configuration, token cleanup, and credential security."""
 
 import os
 from unittest import mock
 
 from pydantic import SecretStr
 
-from github_mcp.config import ServerConfig
+from github_mcp.config import PROJECT_ROOT, ServerConfig
 
 
 def test_server_config_defaults():
@@ -20,6 +20,28 @@ def test_server_config_with_token():
     config = ServerConfig(github_token=SecretStr("ghp_1234567890abcdef"))
     assert config.has_token
     assert config.get_token_value() == "ghp_1234567890abcdef"
+
+
+def test_token_strips_quotes_and_whitespace():
+    with mock.patch.dict(
+        os.environ,
+        {"GITHUB_PERSONAL_ACCESS_TOKEN": '  "ghp_token_with_quotes"  '},
+        clear=True,
+    ):
+        config = ServerConfig.from_env()
+        assert config.has_token
+        assert config.get_token_value() == "ghp_token_with_quotes"
+
+
+def test_github_token_fallback():
+    with mock.patch.dict(
+        os.environ,
+        {"GITHUB_TOKEN": "ghp_classic_fallback_token"},
+        clear=True,
+    ):
+        config = ServerConfig.from_env()
+        assert config.has_token
+        assert config.get_token_value() == "ghp_classic_fallback_token"
 
 
 def test_token_never_leaked_in_repr_or_str():
@@ -64,3 +86,8 @@ def test_config_from_env():
         assert config.get_token_value() == "ghp_env_token_abcdef"
         assert config.github_api_url == "https://api.github.com"
         assert config.request_timeout == 15.5
+
+
+def test_project_root_identified():
+    assert PROJECT_ROOT.exists()
+    assert (PROJECT_ROOT / "pyproject.toml").exists()

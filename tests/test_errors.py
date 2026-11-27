@@ -25,6 +25,21 @@ def test_rate_limit_error_formatting():
     assert err.status_code == 403
 
 
+def test_unauthenticated_rate_limit_formatting():
+    err = GitHubRateLimitError(reset_time=1700000000, limit=60)
+    assert "unauthenticated requests (60 req/hr limit reached)" in str(err)
+    assert "GITHUB_PERSONAL_ACCESS_TOKEN" in str(err)
+    assert err.limit == 60
+
+
+def test_secondary_rate_limit_formatting():
+    err = GitHubRateLimitError(is_secondary=True, retry_after=45)
+    assert "secondary rate limit" in str(err).lower()
+    assert "45 seconds" in str(err)
+    assert err.retry_after == 45
+    assert err.is_secondary is True
+
+
 def test_auth_error_default():
     err = GitHubAuthError()
     assert "authentication failed" in str(err).lower()
