@@ -19,7 +19,13 @@ from starlette.responses import HTMLResponse, JSONResponse, Response
 from starlette.routing import Route
 
 from github_mcp.config import PROJECT_ROOT, ServerConfig, get_configuration_status
-from github_mcp.errors import GitHubError
+from github_mcp.errors import (
+    GitHubAuthError,
+    GitHubError,
+    GitHubPermissionError,
+    GitHubRateLimitError,
+    GitHubTimeoutError,
+)
 from github_mcp.github_client import GitHubClient
 from github_mcp.ml_analyzer import MLRepositoryAnalyzer
 from github_mcp.server import create_server
@@ -133,8 +139,19 @@ def generate_client_configs() -> dict[str, Any]:
 # ============================================================================
 
 
+def _extract_rate_limit(client: Any) -> dict[str, Any]:
+    """Safely extract rate limit dictionary from client, handling mock instances gracefully."""
+    try:
+        info = client.get_rate_limit_info()
+        if isinstance(info, dict):
+            return info
+    except Exception:
+        pass
+    return {}
+
+
 async def api_status(request: Request) -> Response:
-    """Return runtime configuration and GitHub authentication status."""
+    """Return runtime configuration, GitHub authentication status, and rate limit diagnostics."""
     cfg = ServerConfig.from_env()
     status = get_configuration_status(cfg)
     status["transport"] = "stdio"
@@ -175,6 +192,7 @@ async def api_list_repositories(request: Request) -> Response:
                 {
                     "count": len(repos),
                     "authenticated": cfg.has_token,
+                    "rate_limit": _extract_rate_limit(client),
                     "filters": {
                         "username": username or "(authenticated user)",
                         "name_filter": name_filter,
@@ -183,14 +201,71 @@ async def api_list_repositories(request: Request) -> Response:
                     "repositories": [repo.model_dump() for repo in repos],
                 }
             )
+    except GitHubTimeoutError as e:
+        return JSONResponse(
+            {
+                "error": True,
+                "error_type": "ConnectTimeout" if e.is_connect_timeout else "ReadTimeout",
+                "message": str(e),
+                "authenticated": cfg.has_token,
+            },
+            status_code=200,
+        )
+    except GitHubRateLimitError as e:
+        return JSONResponse(
+            {
+                "error": True,
+                "error_type": "RateLimitExceeded",
+                "message": str(e),
+                "status_code": e.status_code,
+                "authenticated": cfg.has_token,
+                "is_secondary": e.is_secondary,
+                "reset_time": e.reset_time,
+                "retry_after": e.retry_after,
+            },
+            status_code=200,
+        )
+    except GitHubPermissionError as e:
+        return JSONResponse(
+            {
+                "error": True,
+                "error_type": "PermissionDenied",
+                "message": str(e),
+                "status_code": 403,
+                "authenticated": cfg.has_token,
+            },
+            status_code=200,
+        )
+    except GitHubAuthError as e:
+        return JSONResponse(
+            {
+                "error": True,
+                "error_type": "AuthenticationFailed",
+                "message": str(e),
+                "status_code": e.status_code,
+                "authenticated": cfg.has_token,
+            },
+            status_code=200,
+        )
     except GitHubError as e:
         return JSONResponse(
-            {"error": True, "message": str(e), "status_code": e.status_code}, status_code=200
+            {
+                "error": True,
+                "error_type": type(e).__name__,
+                "message": str(e),
+                "status_code": e.status_code,
+                "authenticated": cfg.has_token,
+            },
+            status_code=200,
         )
     except Exception as e:
         logger.exception("Error in api_list_repositories")
         return JSONResponse(
-            {"error": True, "message": f"Unexpected error: {type(e).__name__} - {e}"},
+            {
+                "error": True,
+                "error_type": type(e).__name__,
+                "message": f"Unexpected error: {type(e).__name__} - {e}",
+            },
             status_code=200,
         )
 
@@ -204,15 +279,75 @@ async def api_get_repository_details(request: Request) -> Response:
     try:
         async with GitHubClient(config=cfg) as client:
             details = await client.get_repository_details(owner=owner, repo=repo)
-            return JSONResponse(details.model_dump())
+            result = details.model_dump()
+            result["_authenticated"] = cfg.has_token
+            result["_rate_limit"] = _extract_rate_limit(client)
+            return JSONResponse(result)
+    except GitHubTimeoutError as e:
+        return JSONResponse(
+            {
+                "error": True,
+                "error_type": "ConnectTimeout" if e.is_connect_timeout else "ReadTimeout",
+                "message": str(e),
+                "authenticated": cfg.has_token,
+            },
+            status_code=200,
+        )
+    except GitHubRateLimitError as e:
+        return JSONResponse(
+            {
+                "error": True,
+                "error_type": "RateLimitExceeded",
+                "message": str(e),
+                "status_code": e.status_code,
+                "authenticated": cfg.has_token,
+                "is_secondary": e.is_secondary,
+                "reset_time": e.reset_time,
+                "retry_after": e.retry_after,
+            },
+            status_code=200,
+        )
+    except GitHubPermissionError as e:
+        return JSONResponse(
+            {
+                "error": True,
+                "error_type": "PermissionDenied",
+                "message": str(e),
+                "status_code": 403,
+                "authenticated": cfg.has_token,
+            },
+            status_code=200,
+        )
+    except GitHubAuthError as e:
+        return JSONResponse(
+            {
+                "error": True,
+                "error_type": "AuthenticationFailed",
+                "message": str(e),
+                "status_code": e.status_code,
+                "authenticated": cfg.has_token,
+            },
+            status_code=200,
+        )
     except GitHubError as e:
         return JSONResponse(
-            {"error": True, "message": str(e), "status_code": e.status_code}, status_code=200
+            {
+                "error": True,
+                "error_type": type(e).__name__,
+                "message": str(e),
+                "status_code": e.status_code,
+                "authenticated": cfg.has_token,
+            },
+            status_code=200,
         )
     except Exception as e:
         logger.exception("Error in api_get_repository_details")
         return JSONResponse(
-            {"error": True, "message": f"Unexpected error: {type(e).__name__} - {e}"},
+            {
+                "error": True,
+                "error_type": type(e).__name__,
+                "message": f"Unexpected error: {type(e).__name__} - {e}",
+            },
             status_code=200,
         )
 
@@ -229,15 +364,72 @@ async def api_get_repository_tree(request: Request) -> Response:
             tree = await client.get_repository_tree(
                 owner=owner, repo=repo, branch=branch, recursive=True
             )
-            return JSONResponse(tree.model_dump())
+            result = tree.model_dump()
+            result["_authenticated"] = cfg.has_token
+            result["_rate_limit"] = _extract_rate_limit(client)
+            return JSONResponse(result)
+    except GitHubTimeoutError as e:
+        return JSONResponse(
+            {
+                "error": True,
+                "error_type": "ConnectTimeout" if e.is_connect_timeout else "ReadTimeout",
+                "message": str(e),
+                "authenticated": cfg.has_token,
+            },
+            status_code=200,
+        )
+    except GitHubRateLimitError as e:
+        return JSONResponse(
+            {
+                "error": True,
+                "error_type": "RateLimitExceeded",
+                "message": str(e),
+                "status_code": e.status_code,
+                "authenticated": cfg.has_token,
+            },
+            status_code=200,
+        )
+    except GitHubPermissionError as e:
+        return JSONResponse(
+            {
+                "error": True,
+                "error_type": "PermissionDenied",
+                "message": str(e),
+                "status_code": 403,
+                "authenticated": cfg.has_token,
+            },
+            status_code=200,
+        )
+    except GitHubAuthError as e:
+        return JSONResponse(
+            {
+                "error": True,
+                "error_type": "AuthenticationFailed",
+                "message": str(e),
+                "status_code": e.status_code,
+                "authenticated": cfg.has_token,
+            },
+            status_code=200,
+        )
     except GitHubError as e:
         return JSONResponse(
-            {"error": True, "message": str(e), "status_code": e.status_code}, status_code=200
+            {
+                "error": True,
+                "error_type": type(e).__name__,
+                "message": str(e),
+                "status_code": e.status_code,
+                "authenticated": cfg.has_token,
+            },
+            status_code=200,
         )
     except Exception as e:
         logger.exception("Error in api_get_repository_tree")
         return JSONResponse(
-            {"error": True, "message": f"Unexpected error: {type(e).__name__} - {e}"},
+            {
+                "error": True,
+                "error_type": type(e).__name__,
+                "message": f"Unexpected error: {type(e).__name__} - {e}",
+            },
             status_code=200,
         )
 
@@ -260,15 +452,72 @@ async def api_get_file_contents(request: Request) -> Response:
             file_obj = await client.get_file_contents(
                 owner=owner, repo=repo, path=path, branch=branch
             )
-            return JSONResponse(file_obj.model_dump())
+            result = file_obj.model_dump()
+            result["_authenticated"] = cfg.has_token
+            result["_rate_limit"] = _extract_rate_limit(client)
+            return JSONResponse(result)
+    except GitHubTimeoutError as e:
+        return JSONResponse(
+            {
+                "error": True,
+                "error_type": "ConnectTimeout" if e.is_connect_timeout else "ReadTimeout",
+                "message": str(e),
+                "authenticated": cfg.has_token,
+            },
+            status_code=200,
+        )
+    except GitHubRateLimitError as e:
+        return JSONResponse(
+            {
+                "error": True,
+                "error_type": "RateLimitExceeded",
+                "message": str(e),
+                "status_code": e.status_code,
+                "authenticated": cfg.has_token,
+            },
+            status_code=200,
+        )
+    except GitHubPermissionError as e:
+        return JSONResponse(
+            {
+                "error": True,
+                "error_type": "PermissionDenied",
+                "message": str(e),
+                "status_code": 403,
+                "authenticated": cfg.has_token,
+            },
+            status_code=200,
+        )
+    except GitHubAuthError as e:
+        return JSONResponse(
+            {
+                "error": True,
+                "error_type": "AuthenticationFailed",
+                "message": str(e),
+                "status_code": e.status_code,
+                "authenticated": cfg.has_token,
+            },
+            status_code=200,
+        )
     except GitHubError as e:
         return JSONResponse(
-            {"error": True, "message": str(e), "status_code": e.status_code}, status_code=200
+            {
+                "error": True,
+                "error_type": type(e).__name__,
+                "message": str(e),
+                "status_code": e.status_code,
+                "authenticated": cfg.has_token,
+            },
+            status_code=200,
         )
     except Exception as e:
         logger.exception("Error in api_get_file_contents")
         return JSONResponse(
-            {"error": True, "message": f"Unexpected error: {type(e).__name__} - {e}"},
+            {
+                "error": True,
+                "error_type": type(e).__name__,
+                "message": f"Unexpected error: {type(e).__name__} - {e}",
+            },
             status_code=200,
         )
 
@@ -284,15 +533,72 @@ async def api_analyze_ml_repository(request: Request) -> Response:
         async with GitHubClient(config=cfg) as client:
             analyzer = MLRepositoryAnalyzer(client=client)
             analysis = await analyzer.analyze(owner=owner, repo=repo, branch=branch)
-            return JSONResponse(analysis.model_dump())
+            result = analysis.model_dump()
+            result["_authenticated"] = cfg.has_token
+            result["_rate_limit"] = _extract_rate_limit(client)
+            return JSONResponse(result)
+    except GitHubTimeoutError as e:
+        return JSONResponse(
+            {
+                "error": True,
+                "error_type": "ConnectTimeout" if e.is_connect_timeout else "ReadTimeout",
+                "message": str(e),
+                "authenticated": cfg.has_token,
+            },
+            status_code=200,
+        )
+    except GitHubRateLimitError as e:
+        return JSONResponse(
+            {
+                "error": True,
+                "error_type": "RateLimitExceeded",
+                "message": str(e),
+                "status_code": e.status_code,
+                "authenticated": cfg.has_token,
+            },
+            status_code=200,
+        )
+    except GitHubPermissionError as e:
+        return JSONResponse(
+            {
+                "error": True,
+                "error_type": "PermissionDenied",
+                "message": str(e),
+                "status_code": 403,
+                "authenticated": cfg.has_token,
+            },
+            status_code=200,
+        )
+    except GitHubAuthError as e:
+        return JSONResponse(
+            {
+                "error": True,
+                "error_type": "AuthenticationFailed",
+                "message": str(e),
+                "status_code": e.status_code,
+                "authenticated": cfg.has_token,
+            },
+            status_code=200,
+        )
     except GitHubError as e:
         return JSONResponse(
-            {"error": True, "message": str(e), "status_code": e.status_code}, status_code=200
+            {
+                "error": True,
+                "error_type": type(e).__name__,
+                "message": str(e),
+                "status_code": e.status_code,
+                "authenticated": cfg.has_token,
+            },
+            status_code=200,
         )
     except Exception as e:
         logger.exception("Error in api_analyze_ml_repository")
         return JSONResponse(
-            {"error": True, "message": f"Unexpected error: {type(e).__name__} - {e}"},
+            {
+                "error": True,
+                "error_type": type(e).__name__,
+                "message": f"Unexpected error: {type(e).__name__} - {e}",
+            },
             status_code=200,
         )
 

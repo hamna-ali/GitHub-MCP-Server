@@ -92,6 +92,17 @@ class GitHubRateLimitError(GitHubError):
         super().__init__(formatted_msg, status_code=status_code)
 
 
+class GitHubPermissionError(GitHubAuthError):
+    """Raised when the GitHub token is authenticated but lacks permission for the specific resource."""
+
+    def __init__(
+        self,
+        message: str = "GitHub API Forbidden (403). Your configured personal access token lacks required permissions (e.g. repository read scope) for this resource.",
+        status_code: int = 403,
+    ):
+        super().__init__(message, status_code=status_code)
+
+
 class GitHubContentError(GitHubError):
     """Raised when file content cannot be retrieved (e.g., path is directory or too large)."""
 
@@ -104,3 +115,21 @@ class GitHubNetworkError(GitHubError):
 
     def __init__(self, message: str = "Failed to connect to GitHub API due to a network error."):
         super().__init__(message, status_code=None)
+
+
+class GitHubTimeoutError(GitHubNetworkError):
+    """Raised when a connection or read timeout occurs communicating with GitHub API.
+
+    Explicitly distinguished from rate-limit errors: connection timeouts indicate network,
+    DNS, firewall, or latency barriers, not exhausted API request quotas.
+    """
+
+    def __init__(
+        self,
+        message: str = "Connection to GitHub API timed out (ConnectTimeout). Check your internet connection, proxy, or DNS settings. This is a network connectivity issue, not a GitHub API rate limit.",
+        timeout_seconds: Optional[float] = None,
+        is_connect_timeout: bool = True,
+    ):
+        self.timeout_seconds = timeout_seconds
+        self.is_connect_timeout = is_connect_timeout
+        super().__init__(message)

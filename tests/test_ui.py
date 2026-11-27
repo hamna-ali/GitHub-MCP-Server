@@ -32,6 +32,9 @@ def test_ui_index_html_serving(client):
     assert "Workspace" in resp.text
     assert "Connect Agent" in resp.text
     assert "ML Portfolio Analysis" in resp.text
+    assert "blankslate" in resp.text
+    assert "flash" in resp.text
+    assert "header-rate-limit-badge" in resp.text
 
 
 def test_api_status_endpoint(client):

@@ -1,5 +1,6 @@
 """Reusable asynchronous GitHub REST API client with robust error handling, caching, and rate limit tracking."""
 
+import asyncio
 import base64
 import logging
 import time
@@ -14,7 +15,9 @@ from github_mcp.errors import (
     GitHubError,
     GitHubNetworkError,
     GitHubNotFoundError,
+    GitHubPermissionError,
     GitHubRateLimitError,
+    GitHubTimeoutError,
 )
 from github_mcp.models import (
     FileContent,
@@ -36,13 +39,28 @@ class GitHubClient:
         # Short-lived in-memory cache for GET responses to avoid duplicate calls during a demo session
         self._cache: dict[tuple[str, tuple], tuple[float, httpx.Response]] = {}
         self._cache_ttl: float = 300.0  # 5 minutes
+        # Rate limit tracking from response headers
+        self.last_rate_limit: dict[str, Any] = {}
+
+    def _build_client_timeout(self) -> httpx.Timeout:
+        """Create structured httpx Timeout with distinct connect and read limits."""
+        return httpx.Timeout(
+            timeout=self.config.request_timeout,
+            connect=self.config.connect_timeout,
+            read=self.config.request_timeout,
+            write=10.0,
+            pool=10.0,
+        )
 
     async def __aenter__(self) -> "GitHubClient":
         headers = self.config.get_headers()
         self._client = httpx.AsyncClient(
             base_url=self.config.github_api_url,
             headers=headers,
-            timeout=self.config.request_timeout,
+            timeout=self._build_client_timeout(),
+            limits=httpx.Limits(
+                max_keepalive_connections=10, max_connections=20, keepalive_expiry=30.0
+            ),
             follow_redirects=True,
         )
         return self
@@ -58,10 +76,44 @@ class GitHubClient:
             self._client = httpx.AsyncClient(
                 base_url=self.config.github_api_url,
                 headers=headers,
-                timeout=self.config.request_timeout,
+                timeout=self._build_client_timeout(),
+                limits=httpx.Limits(
+                    max_keepalive_connections=10, max_connections=20, keepalive_expiry=30.0
+                ),
                 follow_redirects=True,
             )
         return self._client
+
+    def _update_rate_limit(self, headers: Any) -> None:
+        """Parse and store rate limit state from GitHub response headers."""
+        if not hasattr(headers, "get"):
+            return
+        limit = headers.get("x-ratelimit-limit")
+        remaining = headers.get("x-ratelimit-remaining")
+        reset_ts = headers.get("x-ratelimit-reset")
+        used = headers.get("x-ratelimit-used")
+        resource = headers.get("x-ratelimit-resource")
+
+        if limit and str(limit).isdigit():
+            self.last_rate_limit = {
+                "limit": int(limit),
+                "remaining": int(remaining) if remaining and str(remaining).isdigit() else None,
+                "reset_epoch": int(reset_ts) if reset_ts and str(reset_ts).isdigit() else None,
+                "used": int(used) if used and str(used).isdigit() else None,
+                "resource": resource or "core",
+                "authenticated": self.config.has_token,
+            }
+
+    def get_rate_limit_info(self) -> dict[str, Any]:
+        """Safely return current rate limit state without exposing secrets."""
+        if self.last_rate_limit:
+            return dict(self.last_rate_limit)
+        return {
+            "limit": 5000 if self.config.has_token else 60,
+            "remaining": None,
+            "authenticated": self.config.has_token,
+            "status": "pending_first_request",
+        }
 
     async def close(self) -> None:
         """Close the underlying HTTP client session."""
@@ -95,28 +147,55 @@ class GitHubClient:
         if headers:
             req_headers.update(headers)
 
-        try:
-            response = await client.request(
-                method=method,
-                url=endpoint,
-                params=params,
-                headers=req_headers,
-            )
-        except (
-            httpx.ConnectError,
-            httpx.ConnectTimeout,
-            httpx.ReadTimeout,
-            httpx.NetworkError,
-        ) as e:
-            logger.error("Network communication error with GitHub API: %s", type(e).__name__)
-            raise GitHubNetworkError(
-                f"Failed to communicate with GitHub API ({type(e).__name__}). Check network connection."
-            ) from None
-        except Exception as e:
-            logger.error("Unexpected error communicating with GitHub API: %s", type(e).__name__)
-            raise GitHubNetworkError(
-                f"Network request to GitHub failed: {type(e).__name__}"
-            ) from None
+        max_attempts = 2 if method.upper() == "GET" else 1
+        response = None
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = await client.request(
+                    method=method,
+                    url=endpoint,
+                    params=params,
+                    headers=req_headers,
+                )
+                break
+            except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+                if attempt < max_attempts:
+                    logger.warning(
+                        "Transient connection issue (%s) accessing %s (attempt %d/%d). Retrying in 0.5s...",
+                        type(e).__name__,
+                        endpoint,
+                        attempt,
+                        max_attempts,
+                    )
+                    await asyncio.sleep(0.5)
+                    continue
+                if isinstance(e, httpx.ConnectTimeout):
+                    raise GitHubTimeoutError(
+                        f"Connection to GitHub API timed out (ConnectTimeout) after {self.config.connect_timeout}s. "
+                        "Check network connectivity, DNS, or proxy settings. This is a network issue, not a rate limit.",
+                        timeout_seconds=self.config.connect_timeout,
+                        is_connect_timeout=True,
+                    ) from None
+                raise GitHubNetworkError(
+                    f"Failed to communicate with GitHub API ({type(e).__name__}). Check network connection."
+                ) from None
+            except httpx.ReadTimeout:
+                raise GitHubTimeoutError(
+                    f"Read timed out from GitHub API after {self.config.request_timeout}s. Server took too long to reply.",
+                    timeout_seconds=self.config.request_timeout,
+                    is_connect_timeout=False,
+                ) from None
+            except Exception as e:
+                logger.error("Unexpected error communicating with GitHub API: %s", type(e).__name__)
+                raise GitHubNetworkError(
+                    f"Network request to GitHub failed: {type(e).__name__}"
+                ) from None
+
+        if response is None:
+            raise GitHubNetworkError("Failed to obtain a response from GitHub API.")
+
+        # Always inspect and store rate-limit headers
+        self._update_rate_limit(response.headers)
 
         # Inspect rate limit headers on successful response
         if response.status_code == 200:
@@ -179,10 +258,10 @@ class GitHubClient:
             try:
                 data = response.json()
                 if "message" in data:
-                    err_msg = f"GitHub API Forbidden: {data['message']}"
+                    err_msg = f"GitHub API Permission Denied (403): {data['message']}"
             except Exception:
                 pass
-            raise GitHubAuthError(err_msg, status_code=403)
+            raise GitHubPermissionError(err_msg, status_code=403)
 
         if response.status_code == 404:
             clean_endpoint = endpoint.split("?")[0]

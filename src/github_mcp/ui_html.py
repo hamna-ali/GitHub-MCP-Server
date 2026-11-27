@@ -11,42 +11,45 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg-base: #090d16;
-      --bg-surface: #0f172a;
-      --bg-surface-elevated: #1e293b;
-      --bg-surface-hover: #273549;
-      --border-subtle: #1e293b;
-      --border-default: #334155;
-      --border-focus: #38bdf8;
+      /* GitHub Primer Design System Dark Palette */
+      --bg-base: #0d1117;
+      --bg-surface: #161b22;
+      --bg-surface-elevated: #21262d;
+      --bg-surface-hover: #30363d;
+      --border-subtle: #21262d;
+      --border-default: #30363d;
+      --border-focus: #58a6ff;
 
-      --text-main: #f8fafc;
-      --text-muted: #94a3b8;
-      --text-subtle: #64748b;
+      --text-main: #f0f6fc;
+      --text-muted: #8b949e;
+      --text-subtle: #6e7681;
 
-      --accent-primary: #38bdf8;
-      --accent-primary-hover: #0284c7;
-      --accent-primary-subtle: rgba(56, 189, 248, 0.12);
+      --accent-primary: #58a6ff;
+      --accent-primary-hover: #79c0ff;
+      --accent-primary-subtle: rgba(56, 139, 253, 0.15);
 
-      --badge-success: #10b981;
-      --badge-success-bg: rgba(16, 185, 129, 0.14);
-      --badge-warning: #f59e0b;
-      --badge-warning-bg: rgba(245, 158, 11, 0.14);
-      --badge-danger: #ef4444;
-      --badge-danger-bg: rgba(239, 68, 68, 0.14);
-      --badge-neutral: #64748b;
-      --badge-neutral-bg: rgba(100, 116, 139, 0.15);
+      --badge-success: #3fb950;
+      --badge-success-bg: rgba(46, 160, 67, 0.15);
+      --badge-warning: #d29922;
+      --badge-warning-bg: rgba(187, 128, 9, 0.15);
+      --badge-danger: #f85149;
+      --badge-danger-bg: rgba(248, 81, 73, 0.15);
+      --badge-neutral: #6e7681;
+      --badge-neutral-bg: rgba(110, 118, 129, 0.15);
+
+      --primer-tab-active: #f78166;
 
       --radius-sm: 6px;
-      --radius-md: 10px;
-      --radius-lg: 14px;
-      --radius-pill: 9999px;
+      --radius-md: 6px;
+      --radius-lg: 8px;
+      --radius-pill: 20px;
 
-      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.35);
-      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 2px 4px -1px rgba(0, 0, 0, 0.25);
-      --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5), 0 4px 6px -2px rgba(0, 0, 0, 0.3);
+      --shadow-sm: 0 1px 0 rgba(1, 4, 9, 0.8);
+      --shadow-md: 0 3px 6px rgba(1, 4, 9, 0.4);
+      --shadow-lg: 0 8px 24px rgba(1, 4, 9, 0.6);
 
-      --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-      --font-mono: 'JetBrains Mono', Consolas, Monaco, monospace;
+      --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
     }
 
     * {
@@ -73,13 +76,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       transition: color 0.15s ease;
     }
     a:hover {
-      color: #7dd3fc;
+      color: #79c0ff;
     }
 
-    /* Top Navigation Bar */
+    /* GitHub Primer Top Navigation Bar */
     header.app-header {
-      background-color: rgba(15, 23, 42, 0.85);
-      backdrop-filter: blur(12px);
+      background-color: var(--bg-surface);
       border-bottom: 1px solid var(--border-default);
       position: sticky;
       top: 0;
@@ -100,18 +102,18 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     .brand-icon {
       width: 32px;
       height: 32px;
-      background: linear-gradient(135deg, #0284c7, #6366f1);
+      background: linear-gradient(135deg, #1f6feb, #238636);
       border-radius: var(--radius-md);
       display: flex;
       align-items: center;
       justify-content: center;
       color: white;
-      box-shadow: 0 0 16px rgba(56, 189, 248, 0.35);
+      box-shadow: 0 0 12px rgba(88, 166, 255, 0.25);
     }
 
     .brand-title {
       font-weight: 700;
-      font-size: 1.05rem;
+      font-size: 1rem;
       letter-spacing: -0.01em;
       color: var(--text-main);
       display: flex;
@@ -125,43 +127,46 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       padding: 2px 7px;
       background: var(--accent-primary-subtle);
       color: var(--accent-primary);
-      border: 1px solid rgba(56, 189, 248, 0.3);
+      border: 1px solid rgba(88, 166, 255, 0.3);
       border-radius: var(--radius-pill);
       text-transform: uppercase;
       letter-spacing: 0.04em;
     }
 
+    /* Primer UnderlineNav */
     nav.main-nav {
       display: flex;
       align-items: center;
-      gap: 0.25rem;
+      gap: 0.35rem;
+      height: 100%;
     }
 
     .nav-btn {
       background: transparent;
       border: none;
+      border-bottom: 2px solid transparent;
       color: var(--text-muted);
       font-family: var(--font-sans);
-      font-size: 0.9rem;
+      font-size: 14px;
       font-weight: 500;
-      padding: 0.5rem 0.85rem;
-      border-radius: var(--radius-md);
+      padding: 0 0.85rem;
+      height: 100%;
+      border-radius: 0;
       cursor: pointer;
       display: flex;
       align-items: center;
       gap: 0.45rem;
-      transition: all 0.15s ease;
+      transition: color 0.12s ease, border-color 0.12s ease;
     }
 
     .nav-btn:hover {
       color: var(--text-main);
-      background-color: var(--bg-surface-elevated);
+      border-bottom-color: var(--border-default);
     }
 
     .nav-btn.active {
       color: var(--text-main);
-      background-color: var(--bg-surface-elevated);
-      border: 1px solid var(--border-default);
+      border-bottom-color: var(--primer-tab-active);
       font-weight: 600;
     }
 
@@ -287,21 +292,22 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       flex-wrap: wrap;
     }
 
-    /* Buttons */
+    /* GitHub Primer Buttons */
     .btn {
       display: inline-flex;
       align-items: center;
       justify-content: center;
       gap: 0.45rem;
       font-family: var(--font-sans);
-      font-size: 0.875rem;
-      font-weight: 600;
-      padding: 0.55rem 1rem;
+      font-size: 14px;
+      font-weight: 500;
+      padding: 5px 16px;
       border-radius: var(--radius-md);
-      border: 1px solid transparent;
+      border: 1px solid var(--border-default);
       cursor: pointer;
       transition: all 0.15s ease;
       white-space: nowrap;
+      line-height: 20px;
     }
 
     .btn:focus-visible {
@@ -310,29 +316,32 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
 
     .btn-primary {
-      background-color: var(--accent-primary);
-      color: #04101e;
-      border-color: var(--accent-primary);
+      background-color: #238636;
+      color: #ffffff;
+      border-color: rgba(240, 246, 252, 0.1);
+      font-weight: 600;
     }
     .btn-primary:hover {
-      background-color: var(--accent-primary-hover);
-      border-color: var(--accent-primary-hover);
-      color: white;
+      background-color: #2ea043;
+      border-color: rgba(240, 246, 252, 0.1);
+      color: #ffffff;
     }
 
     .btn-secondary {
-      background-color: var(--bg-surface-elevated);
-      color: var(--text-main);
+      background-color: #21262d;
+      color: #c9d1d9;
       border-color: var(--border-default);
     }
     .btn-secondary:hover {
-      background-color: var(--bg-surface-hover);
-      border-color: #475569;
+      background-color: #30363d;
+      border-color: #8b949e;
+      color: #f0f6fc;
     }
 
     .btn-sm {
-      padding: 0.35rem 0.65rem;
-      font-size: 0.775rem;
+      padding: 3px 12px;
+      font-size: 12px;
+      line-height: 18px;
     }
 
     /* Grid Layouts */
@@ -602,22 +611,23 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       border-bottom: 2px solid transparent;
       color: var(--text-muted);
       font-family: var(--font-sans);
-      font-size: 0.875rem;
+      font-size: 14px;
       font-weight: 500;
       padding: 0.65rem 1rem;
       cursor: pointer;
       display: flex;
       align-items: center;
       gap: 0.45rem;
-      transition: all 0.15s ease;
+      transition: color 0.12s ease, border-color 0.12s ease;
       white-space: nowrap;
     }
     .sub-tab-btn:hover {
       color: var(--text-main);
+      border-bottom-color: var(--border-default);
     }
     .sub-tab-btn.active {
-      color: var(--accent-primary);
-      border-bottom-color: var(--accent-primary);
+      color: var(--text-main);
+      border-bottom-color: var(--primer-tab-active);
       font-weight: 600;
     }
 
@@ -987,7 +997,95 @@ HTML_TEMPLATE = """<!DOCTYPE html>
       to { transform: translateX(0); opacity: 1; }
     }
 
-    /* Empty and Error states */
+    /* GitHub Primer Blankslate */
+    .blankslate {
+      text-align: center;
+      padding: 2.5rem 1.5rem;
+      border: 1px dashed var(--border-default);
+      border-radius: var(--radius-md);
+      background-color: var(--bg-surface);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      margin: 1rem 0;
+    }
+
+    .blankslate-icon {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background-color: var(--bg-surface-elevated);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-subtle);
+      margin-bottom: 0.5rem;
+    }
+
+    .blankslate-heading {
+      font-size: 1.15rem;
+      font-weight: 600;
+      color: var(--text-main);
+    }
+
+    .blankslate-text {
+      font-size: 0.875rem;
+      color: var(--text-muted);
+      max-width: 480px;
+      line-height: 1.5;
+    }
+
+    .blankslate-action {
+      margin-top: 0.75rem;
+    }
+
+    /* GitHub Primer Flash Banners (Alerts & Errors) */
+    .flash {
+      position: relative;
+      padding: 12px 16px;
+      font-size: 13px;
+      line-height: 1.5;
+      border: 1px solid;
+      border-radius: var(--radius-md);
+      margin-bottom: 1.25rem;
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+    }
+
+    .flash-error {
+      color: #f85149;
+      background-color: rgba(248, 81, 73, 0.1);
+      border-color: rgba(248, 81, 73, 0.4);
+    }
+
+    .flash-warn {
+      color: #d29922;
+      background-color: rgba(187, 128, 9, 0.1);
+      border-color: rgba(187, 128, 9, 0.4);
+    }
+
+    .flash-info {
+      color: #58a6ff;
+      background-color: rgba(56, 139, 253, 0.1);
+      border-color: rgba(56, 139, 253, 0.4);
+    }
+
+    .flash-success {
+      color: #3fb950;
+      background-color: rgba(46, 160, 67, 0.1);
+      border-color: rgba(46, 160, 67, 0.4);
+    }
+
+    .flash-title {
+      font-weight: 600;
+      display: block;
+      margin-bottom: 3px;
+    }
+
+    /* Empty and Error states fallback */
     .state-box {
       text-align: center;
       padding: 3rem 1.5rem;
@@ -1012,11 +1110,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     }
 
     .error-card {
-      background-color: rgba(239, 68, 68, 0.08);
-      border: 1px solid rgba(239, 68, 68, 0.3);
+      background-color: rgba(248, 81, 73, 0.1);
+      border: 1px solid rgba(248, 81, 73, 0.4);
       border-radius: var(--radius-md);
       padding: 1rem 1.25rem;
-      color: #fca5a5;
+      color: #f85149;
       font-size: 0.875rem;
       margin-bottom: 1.25rem;
       display: flex;
@@ -1088,13 +1186,17 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     </nav>
 
     <div class="header-status-area">
+      <div class="status-pill" id="header-rate-limit-badge" title="Live GitHub API Quota">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+        <span id="header-rate-limit-text">Quota: Checking...</span>
+      </div>
       <div class="status-pill" id="header-auth-badge" title="GitHub API Authentication Tier">
         <span class="status-dot" id="header-auth-dot"></span>
         <span id="header-auth-text">Checking status...</span>
       </div>
       <div class="status-pill" title="Local MCP Server Protocol Status">
         <span class="status-dot active"></span>
-        <span>stdio JSON-RPC</span>
+        <span>stdio MCP 2.x</span>
       </div>
     </div>
   </header>
@@ -1230,23 +1332,26 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </button>
       </div>
 
-      <!-- Error / Notice Box -->
-      <div id="explore-error-box" class="error-card" style="display: none;">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+      <!-- GitHub Primer Flash Notice Box -->
+      <div id="explore-error-box" class="flash flash-error" style="display: none;">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink: 0; margin-top: 1px;"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
         <div style="flex: 1;">
-          <div style="font-weight: 600;" id="explore-error-title">Request Notice</div>
+          <span class="flash-title" id="explore-error-title">Request Notice</span>
           <div id="explore-error-msg" style="margin-top: 0.25rem;"></div>
         </div>
       </div>
 
-      <!-- Repositories Grid -->
+      <!-- Repositories Grid Container -->
       <div id="repo-list-container">
-        <div class="state-box">
-          <div class="state-icon">
+        <div class="blankslate">
+          <div class="blankslate-icon">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
           </div>
-          <p style="font-size: 0.95rem; font-weight: 600;">No repositories loaded</p>
-          <p style="font-size: 0.85rem; max-width: 400px;">Click "Fetch Repositories" above to query the GitHub REST API and browse repositories for the selected account.</p>
+          <h3 class="blankslate-heading">No repositories loaded</h3>
+          <p class="blankslate-text">Click "Fetch Repositories" above to query the GitHub REST API and browse repositories for the selected account.</p>
+          <div class="blankslate-action">
+            <button class="btn btn-primary btn-sm" onclick="fetchRepositories()">Fetch Repositories</button>
+          </div>
         </div>
       </div>
 
@@ -1847,6 +1952,46 @@ GITHUB_API_URL=https://api.github.com</pre>
       showToast('Activity history cleared.');
     }
 
+    // GitHub Primer Live Rate Limit Tracker
+    function updateRateLimit(rateLimit) {
+      if (!rateLimit) return;
+      const rateText = document.getElementById('header-rate-limit-text');
+      const dashRate = document.getElementById('dash-rate-limit');
+      const dashDetail = document.getElementById('dash-auth-detail');
+      const setTier = document.getElementById('settings-rate-tier');
+      const setSub = document.getElementById('settings-rate-sub');
+
+      if (rateLimit.limit) {
+        const remaining = rateLimit.remaining !== null && rateLimit.remaining !== undefined
+          ? Number(rateLimit.remaining).toLocaleString()
+          : (rateLimit.authenticated ? '5,000' : '60');
+        const limit = Number(rateLimit.limit).toLocaleString();
+
+        let resetStr = '';
+        if (rateLimit.reset_epoch) {
+          const resetDate = new Date(rateLimit.reset_epoch * 1000);
+          resetStr = ` (resets ${resetDate.toLocaleTimeString()})`;
+        }
+
+        if (rateText) {
+          rateText.innerText = `Quota: ${remaining} / ${limit}`;
+          rateText.title = `GitHub API Rate Limit: ${remaining} requests remaining out of ${limit}${resetStr}`;
+        }
+        if (dashRate) {
+          dashRate.innerText = `${remaining} / ${limit}`;
+        }
+        if (dashDetail) {
+          dashDetail.innerText = resetStr ? `Resets at ${new Date(rateLimit.reset_epoch * 1000).toLocaleTimeString()}` : 'Live authenticated quota';
+        }
+        if (setTier) {
+          setTier.innerText = `${remaining} / ${limit}`;
+        }
+        if (setSub && resetStr) {
+          setSub.innerText = `Live quota resets at ${new Date(rateLimit.reset_epoch * 1000).toLocaleTimeString()}`;
+        }
+      }
+    }
+
     // System Status Initialization
     async function loadSystemStatus() {
       try {
@@ -1855,6 +2000,7 @@ GITHUB_API_URL=https://api.github.com</pre>
 
         const authText = document.getElementById('header-auth-text');
         const authDot = document.getElementById('header-auth-dot');
+        const rateText = document.getElementById('header-rate-limit-text');
         const dashRate = document.getElementById('dash-rate-limit');
         const dashDetail = document.getElementById('dash-auth-detail');
         const setPill = document.getElementById('settings-status-pill');
@@ -1864,14 +2010,16 @@ GITHUB_API_URL=https://api.github.com</pre>
         if (data.token_configured) {
           if (authText) authText.innerText = 'Authenticated (5k req/hr)';
           if (authDot) authDot.className = 'status-dot active';
+          if (rateText) rateText.innerText = 'Quota: 5,000 / 5,000';
           if (dashRate) dashRate.innerText = '5,000 req/hr';
-          if (dashDetail) dashDetail.innerText = 'GitHub token active in memory';
+          if (dashDetail) dashDetail.innerText = 'GitHub fine-grained token active in memory';
           if (setPill) { setPill.innerText = 'Token Active'; setPill.style.color = 'var(--badge-success)'; }
           if (setTier) setTier.innerText = '5,000 req/hr';
           if (setSub) setSub.innerText = 'Authenticated token in memory';
         } else {
           if (authText) authText.innerText = 'Unauthenticated (60 req/hr)';
           if (authDot) authDot.className = 'status-dot warning';
+          if (rateText) rateText.innerText = 'Quota: 60 / hr (Unauthenticated)';
           if (dashRate) dashRate.innerText = '60 req/hr';
           if (dashDetail) dashDetail.innerText = 'IP-based rate limit active';
           if (setPill) { setPill.innerText = 'Unauthenticated'; setPill.style.color = 'var(--badge-warning)'; }
@@ -1915,11 +2063,12 @@ GITHUB_API_URL=https://api.github.com</pre>
       if (errBox) errBox.style.display = 'none';
 
       container.innerHTML = `
-        <div class="state-box">
-          <div class="state-icon" style="animation: spin 1s linear infinite;">
+        <div class="blankslate">
+          <div class="blankslate-icon" style="animation: spin 1s linear infinite;">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="2" x2="12" y2="6"></line><line x1="12" y1="18" x2="12" y2="22"></line><line x1="4.93" y1="4.93" x2="7.76" y2="7.76"></line><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"></line><line x1="2" y1="12" x2="6" y2="12"></line><line x1="18" y1="12" x2="22" y2="12"></line></svg>
           </div>
-          <p style="font-weight: 600;">Fetching repositories for ${state.username}...</p>
+          <h3 class="blankslate-heading">Querying GitHub REST API...</h3>
+          <p class="blankslate-text">Fetching repositories for account <strong>${state.username}</strong></p>
         </div>
       `;
 
@@ -1927,13 +2076,49 @@ GITHUB_API_URL=https://api.github.com</pre>
         const resp = await fetch(`/api/repos?username=${encodeURIComponent(state.username)}`);
         const data = await resp.json();
 
+        if (data.rate_limit) updateRateLimit(data.rate_limit);
+
         if (data.error) {
-          if (errBox) {
-            errBox.style.display = 'flex';
-            document.getElementById('explore-error-title').innerText = `GitHub API Response (${data.status_code || 'Notice'})`;
-            document.getElementById('explore-error-msg').innerText = data.message;
+          let errTitle = 'GitHub Request Notice';
+          let errType = 'flash-error';
+          let detailedMsg = data.message;
+
+          if (data.error_type === 'ConnectTimeout') {
+            errTitle = 'Connection Timeout (Network / Latency)';
+            errType = 'flash-warn';
+            detailedMsg = 'Unable to establish TCP handshake with api.github.com within 10s. This is caused by network latency, DNS resolution, or proxy filtering — NOT an API rate limit. Requests are automatically retried.';
+          } else if (data.error_type === 'RateLimitExceeded') {
+            errTitle = 'GitHub Rate Limit Exceeded (HTTP 403)';
+            errType = 'flash-error';
+            detailedMsg = `${data.message} Reset epoch: ${data.reset_time || 'N/A'}. Authenticate with GITHUB_PERSONAL_ACCESS_TOKEN in .env for 5,000 req/hr.`;
+          } else if (data.error_type === 'PermissionDenied') {
+            errTitle = 'GitHub Repository Access Denied (HTTP 403)';
+            errType = 'flash-warn';
+            detailedMsg = 'Token is authenticated, but does not have permission to access this repository. Verify repository access permissions for your fine-grained PAT.';
+          } else if (data.error_type === 'AuthenticationFailed') {
+            errTitle = 'GitHub Authentication Failed (HTTP 401)';
+            errType = 'flash-error';
+            detailedMsg = 'The provided GitHub Personal Access Token is invalid or expired. Check your .env file.';
           }
-          container.innerHTML = `<div class="state-box"><p style="color: #ef4444;">${data.message}</p></div>`;
+
+          if (errBox) {
+            errBox.className = `flash ${errType}`;
+            errBox.style.display = 'flex';
+            document.getElementById('explore-error-title').innerText = errTitle;
+            document.getElementById('explore-error-msg').innerText = detailedMsg;
+          }
+          container.innerHTML = `
+            <div class="blankslate">
+              <div class="blankslate-icon" style="color: var(--badge-danger);">
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+              </div>
+              <h3 class="blankslate-heading">${errTitle}</h3>
+              <p class="blankslate-text">${detailedMsg}</p>
+              <div class="blankslate-action">
+                <button class="btn btn-secondary btn-sm" onclick="fetchRepositories()">Retry Request</button>
+              </div>
+            </div>
+          `;
           recordActivity('List Repositories (Failed)', state.username, 'error');
           return;
         }
@@ -1943,7 +2128,12 @@ GITHUB_API_URL=https://api.github.com</pre>
         recordActivity('List Repositories', `${state.username} (${state.repositories.length} found)`);
         renderRepositories();
       } catch (err) {
-        container.innerHTML = `<div class="state-box"><p style="color: #ef4444;">Network error fetching repositories: ${err.message}</p></div>`;
+        container.innerHTML = `
+          <div class="blankslate">
+            <h3 class="blankslate-heading">Client Error</h3>
+            <p class="blankslate-text">${err.message}</p>
+          </div>
+        `;
       }
     }
 
@@ -2018,6 +2208,7 @@ GITHUB_API_URL=https://api.github.com</pre>
         const resp = await fetch(`/api/repos/${owner}/${repoName}`);
         const details = await resp.json();
         state.activeRepoDetails = details;
+        if (details._rate_limit) updateRateLimit(details._rate_limit);
 
         document.getElementById('active-repo-description').innerText = details.description || 'No description provided.';
         document.getElementById('meta-stars').innerHTML = `&star; ${details.stargazers_count} stars`;
@@ -2065,6 +2256,7 @@ GITHUB_API_URL=https://api.github.com</pre>
         const resp = await fetch(`/api/repos/${owner}/${name}/analyze`, { method: 'POST' });
         const analysis = await resp.json();
         state.activeAnalysis = analysis;
+        if (analysis._rate_limit) updateRateLimit(analysis._rate_limit);
 
         loading.style.display = 'none';
         results.style.display = 'block';
@@ -2167,6 +2359,7 @@ GITHUB_API_URL=https://api.github.com</pre>
         const resp = await fetch(`/api/repos/${owner}/${repo}/tree`);
         const treeData = await resp.json();
         state.activeRepoTree = treeData;
+        if (treeData._rate_limit) updateRateLimit(treeData._rate_limit);
 
         const totalItemsBadge = document.getElementById('tree-total-items-badge');
         if (totalItemsBadge) totalItemsBadge.innerText = `${treeData.total_items || 0} items`;
@@ -2246,6 +2439,7 @@ GITHUB_API_URL=https://api.github.com</pre>
       try {
         const resp = await fetch(`/api/repos/${owner}/${name}/file?path=${encodeURIComponent(path)}`);
         const fileObj = await resp.json();
+        if (fileObj._rate_limit) updateRateLimit(fileObj._rate_limit);
 
         if (fileObj.error) {
           document.getElementById('active-file-content').innerText = `Error: ${fileObj.message}`;

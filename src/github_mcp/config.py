@@ -28,31 +28,28 @@ _TOKEN_PLACEHOLDERS = {
 }
 
 
-def load_env_files(override: bool = True) -> Optional[Path]:
+def load_env_files(override: bool = False) -> Optional[Path]:
     """Find and load .env from canonical project root or current working directory.
 
     Args:
-        override: If True, values from .env overwrite existing environment variables
-            when the environment variable is empty or when refreshing configuration.
+        override: If True, values from .env overwrite existing environment variables.
+            Defaults to False so explicit CLI or test environment variables are preserved.
 
     Returns:
         The Path to the loaded .env file, or None if not found.
     """
+    if not override and (
+        "GITHUB_PERSONAL_ACCESS_TOKEN" in os.environ or "GITHUB_TOKEN" in os.environ
+    ):
+        return None
+
     candidates = [
         PROJECT_ROOT / ".env",
         Path.cwd() / ".env",
     ]
     for candidate in candidates:
         if candidate.is_file():
-            # If token in os.environ is already set to a non-empty, non-placeholder value,
-            # we preserve user explicit CLI export unless override is explicitly forced.
-            existing_token = os.environ.get("GITHUB_PERSONAL_ACCESS_TOKEN") or os.environ.get(
-                "GITHUB_TOKEN"
-            )
-            should_override = override or not (
-                existing_token and existing_token.strip().strip("'\"") not in _TOKEN_PLACEHOLDERS
-            )
-            load_dotenv(dotenv_path=candidate, override=should_override)
+            load_dotenv(dotenv_path=candidate, override=override)
             return candidate
     return None
 
@@ -74,7 +71,11 @@ class ServerConfig(BaseModel):
     )
     request_timeout: float = Field(
         default=20.0,
-        description="HTTP request timeout in seconds",
+        description="HTTP request read timeout in seconds",
+    )
+    connect_timeout: float = Field(
+        default=10.0,
+        description="HTTP connection timeout in seconds",
     )
     max_file_size_bytes: int = Field(
         default=500_000,
@@ -82,10 +83,10 @@ class ServerConfig(BaseModel):
     )
 
     @classmethod
-    def from_env(cls) -> "ServerConfig":
-        """Load configuration from environment variables, reloading project .env if needed."""
-        # Refresh from .env file to pick up any newly created or updated credentials
-        load_env_files(override=True)
+    def from_env(cls, reload_env: bool = True) -> "ServerConfig":
+        """Load configuration from environment variables, loading project .env if needed."""
+        if reload_env:
+            load_env_files(override=False)
 
         raw_token = os.getenv("GITHUB_PERSONAL_ACCESS_TOKEN") or os.getenv("GITHUB_TOKEN")
         clean_token = raw_token.strip().strip("'\"") if raw_token else None
@@ -96,16 +97,23 @@ class ServerConfig(BaseModel):
 
         api_url = os.getenv("GITHUB_API_URL", "https://api.github.com").rstrip("/")
         timeout_str = os.getenv("GITHUB_REQUEST_TIMEOUT", "20.0")
+        connect_timeout_str = os.getenv("GITHUB_CONNECT_TIMEOUT", "10.0")
 
         try:
             timeout = float(timeout_str)
         except ValueError:
             timeout = 20.0
 
+        try:
+            connect_timeout = float(connect_timeout_str)
+        except ValueError:
+            connect_timeout = 10.0
+
         return cls(
             github_token=SecretStr(clean_token) if clean_token else None,
             github_api_url=api_url,
             request_timeout=timeout,
+            connect_timeout=connect_timeout,
         )
 
     @property
@@ -159,6 +167,7 @@ def get_configuration_status(config: Optional[ServerConfig] = None) -> dict[str,
         ),
         "env_file_detected": env_file_detected,
         "request_timeout": cfg.request_timeout,
+        "connect_timeout": cfg.connect_timeout,
     }
 
 

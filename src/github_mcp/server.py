@@ -10,7 +10,13 @@ from typing import Any, Optional
 from mcp.server.mcpserver import MCPServer
 
 from github_mcp.config import ServerConfig, log_startup_configuration
-from github_mcp.errors import GitHubError
+from github_mcp.errors import (
+    GitHubAuthError,
+    GitHubError,
+    GitHubPermissionError,
+    GitHubRateLimitError,
+    GitHubTimeoutError,
+)
 from github_mcp.github_client import GitHubClient
 from github_mcp.ml_analyzer import MLRepositoryAnalyzer
 
@@ -30,17 +36,17 @@ def create_server(config: Optional[ServerConfig] = None) -> MCPServer:
         version="0.1.0",
         instructions=(
             "GitHub Model Context Protocol (MCP) server for Machine Learning portfolio analysis. "
-            "Use these tools to discover repositories, inspect code trees, read documentation and source code, "
-            "and conduct automated machine learning architecture and pipeline verification."
+            "Exposes tools to discover repositories, inspect directory trees, read documentation and source code, "
+            "and conduct automated machine learning architecture and pipeline verification with evidence tracking."
         ),
     )
 
     @server.tool(
         name="list_repositories",
         description=(
-            "List repositories accessible to the user or an optionally specified GitHub account. "
-            "Supports filtering by repository name (or description keywords) and programming language. "
-            "Returns a structured list of repository summaries with star counts, primary languages, and update dates."
+            "Discover and list GitHub repositories accessible to the authenticated account or a specified user. "
+            "Supports filtering by name/description keywords and primary programming language. "
+            "Returns repository metadata including stars, forks, visibility, and authenticated rate-limit status."
         ),
     )
     async def list_repositories(
@@ -51,8 +57,8 @@ def create_server(config: Optional[ServerConfig] = None) -> MCPServer:
         max_pages: int = 3,
     ) -> dict[str, Any]:
         """List and filter repositories."""
+        cfg = _resolve_config()
         try:
-            cfg = _resolve_config()
             async with GitHubClient(config=cfg) as client:
                 repos = await client.list_repositories(
                     username=username,
@@ -64,6 +70,7 @@ def create_server(config: Optional[ServerConfig] = None) -> MCPServer:
                 return {
                     "count": len(repos),
                     "authenticated": cfg.has_token,
+                    "rate_limit": client.get_rate_limit_info(),
                     "filters": {
                         "name_filter": name_filter,
                         "language_filter": language_filter,
@@ -72,17 +79,62 @@ def create_server(config: Optional[ServerConfig] = None) -> MCPServer:
                     },
                     "repositories": [repo.model_dump() for repo in repos],
                 }
+        except GitHubTimeoutError as e:
+            return {
+                "error": True,
+                "error_type": "ConnectTimeout" if e.is_connect_timeout else "ReadTimeout",
+                "message": str(e),
+                "authenticated": cfg.has_token,
+            }
+        except GitHubRateLimitError as e:
+            return {
+                "error": True,
+                "error_type": "RateLimitExceeded",
+                "message": str(e),
+                "status_code": e.status_code,
+                "authenticated": cfg.has_token,
+                "is_secondary": e.is_secondary,
+                "reset_time": e.reset_time,
+                "retry_after": e.retry_after,
+            }
+        except GitHubPermissionError as e:
+            return {
+                "error": True,
+                "error_type": "PermissionDenied",
+                "message": str(e),
+                "status_code": 403,
+                "authenticated": cfg.has_token,
+            }
+        except GitHubAuthError as e:
+            return {
+                "error": True,
+                "error_type": "AuthenticationFailed",
+                "message": str(e),
+                "status_code": e.status_code,
+                "authenticated": cfg.has_token,
+            }
         except GitHubError as e:
-            return {"error": True, "message": str(e), "status_code": e.status_code}
+            return {
+                "error": True,
+                "error_type": type(e).__name__,
+                "message": str(e),
+                "status_code": e.status_code,
+                "authenticated": cfg.has_token,
+            }
         except Exception as e:
             logger.exception("Unexpected error in list_repositories")
-            return {"error": True, "message": f"Unexpected error: {type(e).__name__} - {e}"}
+            return {
+                "error": True,
+                "error_type": type(e).__name__,
+                "message": f"Unexpected error: {type(e).__name__} - {e}",
+            }
 
     @server.tool(
         name="get_repository_details",
         description=(
-            "Fetch detailed metadata for a specific GitHub repository, including description, "
-            "topics, license, default branch, primary language, clone URLs, stars, forks, and timestamps."
+            "Retrieve comprehensive metadata for a specific GitHub repository. "
+            "Returns description, primary language, topics/tags, license, default branch, "
+            "clone URLs, stars, forks, open issues count, and update timestamps."
         ),
     )
     async def get_repository_details(
@@ -90,23 +142,70 @@ def create_server(config: Optional[ServerConfig] = None) -> MCPServer:
         repo: str,
     ) -> dict[str, Any]:
         """Get repository metadata and details."""
+        cfg = _resolve_config()
         try:
-            cfg = _resolve_config()
             async with GitHubClient(config=cfg) as client:
                 details = await client.get_repository_details(owner=owner, repo=repo)
-                return details.model_dump()
+                result = details.model_dump()
+                result["_authenticated"] = cfg.has_token
+                result["_rate_limit"] = client.get_rate_limit_info()
+                return result
+        except GitHubTimeoutError as e:
+            return {
+                "error": True,
+                "error_type": "ConnectTimeout" if e.is_connect_timeout else "ReadTimeout",
+                "message": str(e),
+                "authenticated": cfg.has_token,
+            }
+        except GitHubRateLimitError as e:
+            return {
+                "error": True,
+                "error_type": "RateLimitExceeded",
+                "message": str(e),
+                "status_code": e.status_code,
+                "authenticated": cfg.has_token,
+                "is_secondary": e.is_secondary,
+                "reset_time": e.reset_time,
+                "retry_after": e.retry_after,
+            }
+        except GitHubPermissionError as e:
+            return {
+                "error": True,
+                "error_type": "PermissionDenied",
+                "message": str(e),
+                "status_code": 403,
+                "authenticated": cfg.has_token,
+            }
+        except GitHubAuthError as e:
+            return {
+                "error": True,
+                "error_type": "AuthenticationFailed",
+                "message": str(e),
+                "status_code": e.status_code,
+                "authenticated": cfg.has_token,
+            }
         except GitHubError as e:
-            return {"error": True, "message": str(e), "status_code": e.status_code}
+            return {
+                "error": True,
+                "error_type": type(e).__name__,
+                "message": str(e),
+                "status_code": e.status_code,
+                "authenticated": cfg.has_token,
+            }
         except Exception as e:
             logger.exception("Unexpected error in get_repository_details")
-            return {"error": True, "message": f"Unexpected error: {type(e).__name__} - {e}"}
+            return {
+                "error": True,
+                "error_type": type(e).__name__,
+                "message": f"Unexpected error: {type(e).__name__} - {e}",
+            }
 
     @server.tool(
         name="get_repository_tree",
         description=(
-            "Retrieve the directory structure and file tree of a GitHub repository. "
-            "Can target a specific branch or commit SHA (defaults to repository default branch). "
-            "Returns paths, object types ('blob' for files, 'tree' for folders), and file sizes."
+            "Inspect the directory structure and file tree of a GitHub repository. "
+            "Can target a specific branch or commit SHA (defaults to default branch). "
+            "Returns paths, object types ('blob' for files, 'tree' for folders), and file sizes in bytes."
         ),
     )
     async def get_repository_tree(
@@ -116,8 +215,8 @@ def create_server(config: Optional[ServerConfig] = None) -> MCPServer:
         recursive: bool = True,
     ) -> dict[str, Any]:
         """Retrieve directory structure of a repository."""
+        cfg = _resolve_config()
         try:
-            cfg = _resolve_config()
             async with GitHubClient(config=cfg) as client:
                 tree = await client.get_repository_tree(
                     owner=owner,
@@ -125,19 +224,66 @@ def create_server(config: Optional[ServerConfig] = None) -> MCPServer:
                     branch=branch,
                     recursive=recursive,
                 )
-                return tree.model_dump()
+                result = tree.model_dump()
+                result["_authenticated"] = cfg.has_token
+                result["_rate_limit"] = client.get_rate_limit_info()
+                return result
+        except GitHubTimeoutError as e:
+            return {
+                "error": True,
+                "error_type": "ConnectTimeout" if e.is_connect_timeout else "ReadTimeout",
+                "message": str(e),
+                "authenticated": cfg.has_token,
+            }
+        except GitHubRateLimitError as e:
+            return {
+                "error": True,
+                "error_type": "RateLimitExceeded",
+                "message": str(e),
+                "status_code": e.status_code,
+                "authenticated": cfg.has_token,
+                "is_secondary": e.is_secondary,
+                "reset_time": e.reset_time,
+                "retry_after": e.retry_after,
+            }
+        except GitHubPermissionError as e:
+            return {
+                "error": True,
+                "error_type": "PermissionDenied",
+                "message": str(e),
+                "status_code": 403,
+                "authenticated": cfg.has_token,
+            }
+        except GitHubAuthError as e:
+            return {
+                "error": True,
+                "error_type": "AuthenticationFailed",
+                "message": str(e),
+                "status_code": e.status_code,
+                "authenticated": cfg.has_token,
+            }
         except GitHubError as e:
-            return {"error": True, "message": str(e), "status_code": e.status_code}
+            return {
+                "error": True,
+                "error_type": type(e).__name__,
+                "message": str(e),
+                "status_code": e.status_code,
+                "authenticated": cfg.has_token,
+            }
         except Exception as e:
             logger.exception("Unexpected error in get_repository_tree")
-            return {"error": True, "message": f"Unexpected error: {type(e).__name__} - {e}"}
+            return {
+                "error": True,
+                "error_type": type(e).__name__,
+                "message": f"Unexpected error: {type(e).__name__} - {e}",
+            }
 
     @server.tool(
         name="get_file_contents",
         description=(
-            "Read file contents such as README.md, requirements.txt, pyproject.toml, and Python scripts. "
-            "Handles directories and large files gracefully with informative messages. "
-            "Returns decoded text content, file size, and truncation status."
+            "Read and decode file contents (README.md, requirements.txt, pyproject.toml, Python source code). "
+            "Handles directories and oversized files gracefully with informative notices. "
+            "Returns decoded text content, byte size, and truncation status."
         ),
     )
     async def get_file_contents(
@@ -148,8 +294,8 @@ def create_server(config: Optional[ServerConfig] = None) -> MCPServer:
         max_size_bytes: int = 500_000,
     ) -> dict[str, Any]:
         """Read and decode file contents safely."""
+        cfg = _resolve_config()
         try:
-            cfg = _resolve_config()
             async with GitHubClient(config=cfg) as client:
                 file_obj = await client.get_file_contents(
                     owner=owner,
@@ -158,21 +304,68 @@ def create_server(config: Optional[ServerConfig] = None) -> MCPServer:
                     branch=branch,
                     max_size_bytes=max_size_bytes,
                 )
-                return file_obj.model_dump()
+                result = file_obj.model_dump()
+                result["_authenticated"] = cfg.has_token
+                result["_rate_limit"] = client.get_rate_limit_info()
+                return result
+        except GitHubTimeoutError as e:
+            return {
+                "error": True,
+                "error_type": "ConnectTimeout" if e.is_connect_timeout else "ReadTimeout",
+                "message": str(e),
+                "authenticated": cfg.has_token,
+            }
+        except GitHubRateLimitError as e:
+            return {
+                "error": True,
+                "error_type": "RateLimitExceeded",
+                "message": str(e),
+                "status_code": e.status_code,
+                "authenticated": cfg.has_token,
+                "is_secondary": e.is_secondary,
+                "reset_time": e.reset_time,
+                "retry_after": e.retry_after,
+            }
+        except GitHubPermissionError as e:
+            return {
+                "error": True,
+                "error_type": "PermissionDenied",
+                "message": str(e),
+                "status_code": 403,
+                "authenticated": cfg.has_token,
+            }
+        except GitHubAuthError as e:
+            return {
+                "error": True,
+                "error_type": "AuthenticationFailed",
+                "message": str(e),
+                "status_code": e.status_code,
+                "authenticated": cfg.has_token,
+            }
         except GitHubError as e:
-            return {"error": True, "message": str(e), "status_code": e.status_code}
+            return {
+                "error": True,
+                "error_type": type(e).__name__,
+                "message": str(e),
+                "status_code": e.status_code,
+                "authenticated": cfg.has_token,
+            }
         except Exception as e:
             logger.exception("Unexpected error in get_file_contents")
-            return {"error": True, "message": f"Unexpected error: {type(e).__name__} - {e}"}
+            return {
+                "error": True,
+                "error_type": type(e).__name__,
+                "message": f"Unexpected error: {type(e).__name__} - {e}",
+            }
 
     @server.tool(
         name="analyze_ml_repository",
         description=(
-            "Perform an automated, structured Machine Learning portfolio analysis on a repository. "
-            "Analyzes README documentation, repository tree structure, and dependency files (requirements.txt, "
-            "pyproject.toml, environment.yml) to identify the problem statement, ML frameworks, "
+            "Perform an automated, evidence-backed Machine Learning portfolio evaluation on a repository. "
+            "Analyzes documentation (README), tree structure, and dependency manifests (requirements.txt, "
+            "pyproject.toml, environment.yml) to extract and verify problem statement, ML frameworks, "
             "model architecture, datasets, training pipeline, evaluation metrics, and deployment approach. "
-            "Clearly distinguishes documented and verified findings from unverified aspects."
+            "Distinguishes documented facts from unverified claims with concrete evidence citations."
         ),
     )
     async def analyze_ml_repository(
@@ -181,17 +374,64 @@ def create_server(config: Optional[ServerConfig] = None) -> MCPServer:
         branch: Optional[str] = None,
     ) -> dict[str, Any]:
         """Analyze an ML repository and return structured portfolio evaluation."""
+        cfg = _resolve_config()
         try:
-            cfg = _resolve_config()
             async with GitHubClient(config=cfg) as client:
                 analyzer = MLRepositoryAnalyzer(client=client)
                 analysis = await analyzer.analyze(owner=owner, repo=repo, branch=branch)
-                return analysis.model_dump()
+                result = analysis.model_dump()
+                result["_authenticated"] = cfg.has_token
+                result["_rate_limit"] = client.get_rate_limit_info()
+                return result
+        except GitHubTimeoutError as e:
+            return {
+                "error": True,
+                "error_type": "ConnectTimeout" if e.is_connect_timeout else "ReadTimeout",
+                "message": str(e),
+                "authenticated": cfg.has_token,
+            }
+        except GitHubRateLimitError as e:
+            return {
+                "error": True,
+                "error_type": "RateLimitExceeded",
+                "message": str(e),
+                "status_code": e.status_code,
+                "authenticated": cfg.has_token,
+                "is_secondary": e.is_secondary,
+                "reset_time": e.reset_time,
+                "retry_after": e.retry_after,
+            }
+        except GitHubPermissionError as e:
+            return {
+                "error": True,
+                "error_type": "PermissionDenied",
+                "message": str(e),
+                "status_code": 403,
+                "authenticated": cfg.has_token,
+            }
+        except GitHubAuthError as e:
+            return {
+                "error": True,
+                "error_type": "AuthenticationFailed",
+                "message": str(e),
+                "status_code": e.status_code,
+                "authenticated": cfg.has_token,
+            }
         except GitHubError as e:
-            return {"error": True, "message": str(e), "status_code": e.status_code}
+            return {
+                "error": True,
+                "error_type": type(e).__name__,
+                "message": str(e),
+                "status_code": e.status_code,
+                "authenticated": cfg.has_token,
+            }
         except Exception as e:
             logger.exception("Unexpected error in analyze_ml_repository")
-            return {"error": True, "message": f"Unexpected error: {type(e).__name__} - {e}"}
+            return {
+                "error": True,
+                "error_type": type(e).__name__,
+                "message": f"Unexpected error: {type(e).__name__} - {e}",
+            }
 
     return server
 

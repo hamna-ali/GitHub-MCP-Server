@@ -9,7 +9,9 @@ from github_mcp.errors import (
     GitHubContentError,
     GitHubNetworkError,
     GitHubNotFoundError,
+    GitHubPermissionError,
     GitHubRateLimitError,
+    GitHubTimeoutError,
 )
 from github_mcp.github_client import GitHubClient
 from tests.conftest import (
@@ -400,4 +402,83 @@ async def test_client_in_memory_caching(test_config):
     assert call_count == 1
     assert res2.name == "vision-transformer-classifier"
 
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_connect_timeout_raises_github_timeout_error(test_config):
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectTimeout("Connect timeout to api.github.com")
+
+    client = GitHubClient(config=test_config)
+    client._client = httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="https://api.github.com"
+    )
+
+    with pytest.raises(GitHubTimeoutError) as exc_info:
+        await client.get_repository_details("owner", "repo")
+    assert exc_info.value.is_connect_timeout is True
+    assert "ConnectTimeout" in str(exc_info.value)
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_read_timeout_raises_github_timeout_error(test_config):
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("Read timeout from api.github.com")
+
+    client = GitHubClient(config=test_config)
+    client._client = httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="https://api.github.com"
+    )
+
+    with pytest.raises(GitHubTimeoutError) as exc_info:
+        await client.get_repository_details("owner", "repo")
+    assert exc_info.value.is_connect_timeout is False
+    assert "Read timed out" in str(exc_info.value)
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_permission_error_on_403(test_config):
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            403, json={"message": "Resource not accessible by personal access token"}
+        )
+
+    client = GitHubClient(config=test_config)
+    client._client = httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="https://api.github.com"
+    )
+
+    with pytest.raises(GitHubPermissionError) as exc_info:
+        await client.get_repository_details("owner", "private-repo")
+    assert exc_info.value.status_code == 403
+    assert "Resource not accessible" in str(exc_info.value)
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_rate_limit_tracking(test_config):
+    def handler(request: httpx.Request) -> httpx.Response:
+        headers = {
+            "x-ratelimit-limit": "5000",
+            "x-ratelimit-remaining": "4950",
+            "x-ratelimit-reset": "1750001234",
+            "x-ratelimit-used": "50",
+        }
+        return httpx.Response(200, headers=headers, json=SAMPLE_REPO_DETAILS)
+
+    client = GitHubClient(config=test_config)
+    client._client = httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="https://api.github.com"
+    )
+
+    await client.get_repository_details("ml-engineer", "vision-transformer-classifier")
+    info = client.get_rate_limit_info()
+    assert info["limit"] == 5000
+    assert info["remaining"] == 4950
+    assert info["used"] == 50
+    assert info["reset_epoch"] == 1750001234
+    assert info["authenticated"] is True
     await client.close()
