@@ -1,6 +1,6 @@
-# GitHub Model Context Protocol (MCP) Server for ML Project Portfolios
+# GitHub Model Context Protocol (MCP) Server & Client-Facing Portfolio Assistant
 
-An asynchronous Model Context Protocol (MCP) server engineered in Python 3.12 that connects AI coding assistants directly to GitHub to discover, inspect, and analyze machine learning repositories. Built specifically for technical screen-sharing demonstrations, portfolio evaluations, and technical interviews.
+An asynchronous Model Context Protocol (MCP) server and polished client-facing assistant interface engineered in Python 3.12. Connects AI coding assistants and non-technical reviewers directly to GitHub to discover, inspect, and evaluate machine learning repositories with verified evidence. Built specifically for technical screen-sharing demonstrations, portfolio evaluations, and technical interviews.
 
 ---
 
@@ -38,14 +38,40 @@ An asynchronous Model Context Protocol (MCP) server engineered in Python 3.12 th
                           └──────────────────────────────┘
 ```
 
-- **Transport**: Standard Input/Output (`stdio`) JSON-RPC via official `mcp` SDK.
-- **HTTP Engine**: Asynchronous non-blocking `httpx.AsyncClient` with automatic pagination, rate-limit header parsing, and connection pooling.
+- **Dual-Interface Architecture**:
+  1. **Official MCP stdio Server**: Runs locally over standard input/output (`stdio`) for AI assistants (`python -m github_mcp`).
+  2. **Client-Facing Web Assistant**: Runs on `http://localhost:8000` via Starlette and Uvicorn (`python scripts/launch_ui.py` or `python -m github_mcp --ui`).
+- **HTTP Engine**: Asynchronous non-blocking `httpx.AsyncClient` with automatic pagination, rate-limit header parsing, in-memory caching, and connection pooling.
 - **Security**: Strict token isolation; zero credential leakage in error messages, representations, or execution logs.
 - **Verification Engine**: Heuristic and deterministic AST/regex parser in `MLRepositoryAnalyzer` that inspects repository trees, configuration manifests (`requirements.txt`, `pyproject.toml`, `environment.yml`), and documentation to verify ML architectures and pipelines while clearly flagging unverified claims.
 
 ---
 
-## 2. Implemented MCP Tools
+## 2. Client-Facing Web Interface
+
+The project includes an approachable, high-contrast, client-facing web application that replaces developer-only inspector views with a clean product experience:
+
+- **Workspace / Home**: Real-time system diagnostics, GitHub API rate limit tier indicator (`5,000 req/hr` vs `60 req/hr`), and one-click portfolio discovery for `hamna-ali`.
+- **Explore**: Search any GitHub account, filter by language or keywords, inspect repository metadata cards, and drill down into:
+  - **ML Portfolio Analysis**: Problem statement, detected ML frameworks (verified in dependencies vs mentioned in README), model architectures, datasets, training loops, evaluation metrics, and deployment readiness.
+  - **Browse Files & Code**: Two-pane interactive file tree with formatted code viewer, line numbers, and truncation notices.
+  - **Directory Tree**: Searchable tree structure with Git object types and file sizes.
+  - **Advanced / Developer Details**: Expandable diagnostic accordion showing the underlying MCP tool invocations, parameter schemas, and raw JSON response for technical evaluators.
+- **Connect Agent**: Step-by-step setup guides with copyable configuration snippets for Claude Desktop, Antigravity, and Cursor.
+- **Activity**: In-session audit log tracking all queries, file reads, and ML evaluations.
+- **Settings**: GitHub connection health, API URLs, and safe `.env` configuration guidance.
+
+### Quick Start: Launching the Web UI
+```powershell
+.\.venv\Scripts\python.exe scripts\launch_ui.py
+```
+*(Or via module flag: `.\.venv\Scripts\python.exe -m github_mcp --ui`)*
+
+Open [http://localhost:8000](http://localhost:8000) in your browser.
+
+---
+
+## 3. Implemented MCP Tools
 
 | Tool Name | Parameters | Purpose |
 | :--- | :--- | :--- |
@@ -57,7 +83,7 @@ An asynchronous Model Context Protocol (MCP) server engineered in Python 3.12 th
 
 ---
 
-## 3. Project File Structure
+## 4. Project File Structure
 
 ```
 GitHub-MCP-Server/
@@ -65,24 +91,30 @@ GitHub-MCP-Server/
 ├── .gitignore                # Protects secrets, .venv, caches, and build artifacts
 ├── pyproject.toml            # Project packaging, dependencies, pytest, and ruff settings
 ├── README.md                 # Complete documentation, demo prompts, and architecture guide
+├── scripts/
+│   ├── launch_ui.py          # Standalone runner for the client-facing UI
+│   └── verify_live.py        # Live integration verification script against GitHub API
 ├── src/
 │   └── github_mcp/
 │       ├── __init__.py       # Package version declaration
-│       ├── __main__.py       # CLI executable entrypoint (`python -m github_mcp`)
-│       ├── config.py         # Pydantic configuration and credential masking
+│       ├── __main__.py       # Dual entrypoint: stdio MCP server or Web UI (`--ui`)
+│       ├── config.py         # Pydantic configuration, credential masking & safe check
 │       ├── errors.py         # Custom exceptions guaranteeing zero token leakage
 │       ├── models.py         # Pydantic data models for structured inputs/outputs
-│       ├── github_client.py  # Asynchronous HTTP client for GitHub REST API
+│       ├── github_client.py  # Asynchronous HTTP client for GitHub REST API with caching
 │       ├── ml_analyzer.py    # Domain verification engine for ML repositories
-│       └── server.py         # Official MCP server implementation
+│       ├── server.py         # Official MCP server implementation (stdio transport)
+│       ├── ui.py             # Starlette application & API endpoints for client UI
+│       └── ui_html.py        # Embedded responsive HTML/CSS/JS single-page application
 └── tests/
     ├── __init__.py
     ├── conftest.py           # Pytest fixtures and mock GitHub REST payloads
     ├── test_config.py        # Configuration and secret masking verification
     ├── test_errors.py        # Custom exception hierarchy and safety tests
-    ├── test_github_client.py # Mocked HTTP tests (pagination, rate limits, 404, errors)
+    ├── test_github_client.py # Mocked HTTP tests (headers, pagination, rate limits, 404)
     ├── test_ml_analyzer.py   # ML verification tests (full ML, tabular, non-ML, missing doc)
-    └── test_server.py        # MCP server tool registration and routing tests
+    ├── test_server.py        # MCP server tool registration and routing tests
+    └── test_ui.py            # Starlette API endpoints and web UI tests
 ```
 
 ---
@@ -188,11 +220,11 @@ npx @modelcontextprotocol/inspector .\.venv\Scripts\python.exe -m github_mcp
 
 ## 7. Running Tests and Verification
 
-### Run the Automated Test Suite (37 unit & integration tests)
+### Run the Automated Test Suite (51 unit & integration tests)
 ```powershell
 .\.venv\Scripts\pytest.exe -v
 ```
-*Expected result*: `37 passed` in ~3 seconds.
+*Expected result*: `51 passed` in ~3 seconds.
 
 ### Run Code Formatting and Lint Checks
 ```powershell
@@ -200,7 +232,13 @@ npx @modelcontextprotocol/inspector .\.venv\Scripts\python.exe -m github_mcp
 .\.venv\Scripts\ruff.exe format --check src tests scripts
 ```
 
-### Launch the Server Manually
+### Launch the Client-Facing Web UI
+```powershell
+.\.venv\Scripts\python.exe scripts\launch_ui.py
+```
+*(Starts the interactive web application at http://localhost:8000)*
+
+### Launch the MCP Server Manually (stdio)
 ```powershell
 .\.venv\Scripts\python.exe -m github_mcp
 ```
@@ -254,7 +292,8 @@ During your screen-sharing presentation, demonstrate the end-to-end integration 
 - [x] Safe file reader handling base64 decoding, directories, and large files.
 - [x] Domain-aware ML repository verification engine checking for 30+ ML frameworks across Deep Learning, Tabular ML, NLP, CV, MLOps, and Serving.
 - [x] Strict verification classification (`documented`, `inferred`, `unverified`) with concrete evidence citations.
-- [x] 100% automated test coverage (30 passing tests) across client, analyzer, server, and config.
+- [x] Client-facing interactive Web UI on localhost (Starlette & Uvicorn) with live status diagnostics, repository browser, AST analysis view, and client setup guides.
+- [x] 100% automated test coverage (51 passing tests) across client, analyzer, server, config, and web UI.
 - [x] Zero credential exposure guarantee.
 
 ### Current Limitations & Future Enhancements
