@@ -90,12 +90,17 @@ class GitHubClient:
                 return cached_resp
 
         client = self._get_client()
+        # Merge configuration headers (which include Authorization if a token is configured)
+        req_headers = dict(self.config.get_headers())
+        if headers:
+            req_headers.update(headers)
+
         try:
             response = await client.request(
                 method=method,
                 url=endpoint,
                 params=params,
-                headers=headers,
+                headers=req_headers,
             )
         except (
             httpx.ConnectError,

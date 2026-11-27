@@ -52,6 +52,7 @@ async def test_server_list_repositories_tool_success(test_config):
 
         result = await tool_fn(name_filter="test", language_filter="Python")
         assert result["count"] == 1
+        assert result["authenticated"] is True
         assert result["repositories"][0]["name"] == "test-repo"
         assert result["filters"]["name_filter"] == "test"
 

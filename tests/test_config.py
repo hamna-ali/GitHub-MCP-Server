@@ -91,3 +91,51 @@ def test_config_from_env():
 def test_project_root_identified():
     assert PROJECT_ROOT.exists()
     assert (PROJECT_ROOT / "pyproject.toml").exists()
+
+
+def test_placeholder_token_ignored():
+    with mock.patch.dict(
+        os.environ,
+        {"GITHUB_PERSONAL_ACCESS_TOKEN": "your_github_personal_access_token_here"},
+        clear=True,
+    ):
+        config = ServerConfig.from_env()
+        assert not config.has_token
+        assert config.get_token_value() is None
+
+
+def test_safe_configuration_status_and_logging_never_leak_token():
+    secret_token = "ghp_super_secret_never_leak_this_token_9999"
+    config = ServerConfig(github_token=SecretStr(secret_token))
+
+    from github_mcp.config import get_configuration_status, log_startup_configuration
+
+    status = get_configuration_status(config)
+    assert status["token_configured"] is True
+    assert "5,000" in status["rate_limit_tier"]
+    # Secret must not appear in any value of status dict
+    for key, value in status.items():
+        assert secret_token not in str(value)
+
+    # Test logger output
+    import logging
+
+    test_logger = logging.getLogger("test_security_logger")
+    log_messages = []
+
+    class CapturingHandler(logging.Handler):
+        def emit(self, record):
+            log_messages.append(record.getMessage())
+
+    handler = CapturingHandler()
+    test_logger.addHandler(handler)
+    test_logger.setLevel(logging.INFO)
+
+    try:
+        log_startup_configuration(config=config, log=test_logger)
+        all_logs = "\n".join(log_messages)
+        assert "Authentication: CONFIGURED" in all_logs
+        assert "5,000 requests/hour" in all_logs
+        assert secret_token not in all_logs, "CRITICAL: Secret token leaked into startup log!"
+    finally:
+        test_logger.removeHandler(handler)

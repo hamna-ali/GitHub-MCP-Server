@@ -23,6 +23,9 @@ from tests.conftest import (
 async def test_list_repositories_authenticated(test_config):
     def handler(request: httpx.Request) -> httpx.Response:
         assert request.url.path == "/user/repos"
+        # Verify Authorization header is sent with Bearer mock token
+        assert "authorization" in request.headers
+        assert request.headers["authorization"] == f"Bearer {test_config.get_token_value()}"
         return httpx.Response(200, json=SAMPLE_REPOS)
 
     client = GitHubClient(config=test_config)
@@ -36,6 +39,50 @@ async def test_list_repositories_authenticated(test_config):
     assert repos[0].owner == "ml-engineer"
     assert repos[0].language == "Python"
     assert repos[0].stargazers_count == 142
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_list_repositories_username_includes_authorization_header(test_config):
+    """Verify that when a token is configured, requests by username include the Authorization header."""
+    recorded_headers = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/users/hamna-ali/repos"
+        recorded_headers.update(dict(request.headers))
+        return httpx.Response(200, json=SAMPLE_REPOS)
+
+    client = GitHubClient(config=test_config)
+    client._client = httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="https://api.github.com"
+    )
+
+    repos = await client.list_repositories(username="hamna-ali")
+    assert len(repos) == 3
+    assert "authorization" in recorded_headers
+    assert recorded_headers["authorization"] == f"Bearer {test_config.get_token_value()}"
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_list_repositories_username_without_token_omits_authorization_header():
+    """Verify that requests by username without a token omit the Authorization header (unauthenticated tier)."""
+    config = ServerConfig()  # No token
+    recorded_headers = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/users/hamna-ali/repos"
+        recorded_headers.update(dict(request.headers))
+        return httpx.Response(200, json=SAMPLE_REPOS)
+
+    client = GitHubClient(config=config)
+    client._client = httpx.AsyncClient(
+        transport=httpx.MockTransport(handler), base_url="https://api.github.com"
+    )
+
+    repos = await client.list_repositories(username="hamna-ali")
+    assert len(repos) == 3
+    assert "authorization" not in recorded_headers
     await client.close()
 
 

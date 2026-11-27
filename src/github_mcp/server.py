@@ -9,7 +9,7 @@ from typing import Any, Optional
 
 from mcp.server.mcpserver import MCPServer
 
-from github_mcp.config import ServerConfig
+from github_mcp.config import ServerConfig, log_startup_configuration
 from github_mcp.errors import GitHubError
 from github_mcp.github_client import GitHubClient
 from github_mcp.ml_analyzer import MLRepositoryAnalyzer
@@ -19,7 +19,12 @@ logger = logging.getLogger("github_mcp.server")
 
 def create_server(config: Optional[ServerConfig] = None) -> MCPServer:
     """Create and configure the GitHub MCP server with all 5 portfolio analysis tools."""
-    cfg = config or ServerConfig.from_env()
+
+    def _resolve_config() -> ServerConfig:
+        if config is not None:
+            return config
+        return ServerConfig.from_env()
+
     server = MCPServer(
         name="github-mcp-server",
         version="0.1.0",
@@ -47,6 +52,7 @@ def create_server(config: Optional[ServerConfig] = None) -> MCPServer:
     ) -> dict[str, Any]:
         """List and filter repositories."""
         try:
+            cfg = _resolve_config()
             async with GitHubClient(config=cfg) as client:
                 repos = await client.list_repositories(
                     username=username,
@@ -57,10 +63,12 @@ def create_server(config: Optional[ServerConfig] = None) -> MCPServer:
                 )
                 return {
                     "count": len(repos),
+                    "authenticated": cfg.has_token,
                     "filters": {
                         "name_filter": name_filter,
                         "language_filter": language_filter,
-                        "username": username or "(authenticated user)",
+                        "username": username
+                        or ("(authenticated user)" if cfg.has_token else "(anonymous)"),
                     },
                     "repositories": [repo.model_dump() for repo in repos],
                 }
@@ -83,6 +91,7 @@ def create_server(config: Optional[ServerConfig] = None) -> MCPServer:
     ) -> dict[str, Any]:
         """Get repository metadata and details."""
         try:
+            cfg = _resolve_config()
             async with GitHubClient(config=cfg) as client:
                 details = await client.get_repository_details(owner=owner, repo=repo)
                 return details.model_dump()
@@ -108,6 +117,7 @@ def create_server(config: Optional[ServerConfig] = None) -> MCPServer:
     ) -> dict[str, Any]:
         """Retrieve directory structure of a repository."""
         try:
+            cfg = _resolve_config()
             async with GitHubClient(config=cfg) as client:
                 tree = await client.get_repository_tree(
                     owner=owner,
@@ -139,6 +149,7 @@ def create_server(config: Optional[ServerConfig] = None) -> MCPServer:
     ) -> dict[str, Any]:
         """Read and decode file contents safely."""
         try:
+            cfg = _resolve_config()
             async with GitHubClient(config=cfg) as client:
                 file_obj = await client.get_file_contents(
                     owner=owner,
@@ -171,6 +182,7 @@ def create_server(config: Optional[ServerConfig] = None) -> MCPServer:
     ) -> dict[str, Any]:
         """Analyze an ML repository and return structured portfolio evaluation."""
         try:
+            cfg = _resolve_config()
             async with GitHubClient(config=cfg) as client:
                 analyzer = MLRepositoryAnalyzer(client=client)
                 analysis = await analyzer.analyze(owner=owner, repo=repo, branch=branch)
@@ -194,6 +206,8 @@ def main() -> None:
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
         stream=sys.stderr,
     )
+    # Output safe startup configuration check to stderr
+    log_startup_configuration(log=logger)
     logger.info("Starting GitHub MCP Server over stdio transport...")
     server = create_server()
     server.run(transport="stdio")
